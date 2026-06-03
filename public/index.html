@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="Family Events"/>
+<title>Family Events Finder</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{font-family:Georgia,'Times New Roman',serif;background:linear-gradient(160deg,#fef9f0,#fce8d5);min-height:100vh;}
+  .header{background:linear-gradient(135deg,#b45309,#f59e0b);padding:36px 20px 50px;text-align:center;}
+  .header h1{font-size:clamp(22px,6vw,38px);font-weight:700;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.2);margin:8px 0 4px;}
+  .header p{color:rgba(255,255,255,0.85);font-size:13px;font-style:italic;}
+  .search-row{margin-top:20px;display:flex;justify-content:center;}
+  #zipInput{width:145px;padding:12px 16px;font-size:20px;border:none;border-radius:12px 0 0 12px;outline:none;font-family:Georgia,serif;letter-spacing:3px;color:#1c1917;box-shadow:0 3px 14px rgba(0,0,0,0.18);}
+  #searchBtn{padding:12px 20px;font-size:14px;font-weight:700;background:#1c1917;color:#fef3c7;border:none;border-radius:0 12px 12px 0;cursor:pointer;font-family:Georgia,serif;box-shadow:0 3px 14px rgba(0,0,0,0.18);}
+  #searchBtn:disabled{background:#78350f;cursor:not-allowed;}
+  .hint{color:rgba(255,255,255,0.5);font-size:11px;margin-top:8px;}
+  .body{max-width:700px;margin:0 auto;padding:0 12px 60px;}
+  .loading{text-align:center;padding:50px 0;color:#92400e;}
+  .spinner{font-size:32px;display:inline-block;animation:spin 1s linear infinite;}
+  @keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}
+  .stats{display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin:16px 0 12px;}
+  .chip{padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;}
+  .filter-box{background:#fff;border-radius:14px;padding:13px 14px;margin-bottom:12px;border:1.5px solid #f3f0eb;box-shadow:0 2px 8px rgba(0,0,0,0.06);}
+  .filter-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#b45309;margin-bottom:6px;}
+  .filter-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;}
+  .fbtn{padding:4px 11px;border-radius:999px;border:2px solid #e7e5e4;background:#fafaf9;color:#78350f;font-weight:600;font-size:11px;cursor:pointer;font-family:Georgia,serif;transition:all 0.15s;}
+  .fbtn.active-o{border-color:#b45309;background:#b45309;color:#fff;}
+  .fbtn.active-g{border-color:#16a34a;background:#dcfce7;color:#166534;}
+  .fbtn.active-y{border-color:#f59e0b;background:#fef3c7;color:#92400e;}
+  .events{display:flex;flex-direction:column;gap:11px;}
+  .card{background:#fff;border-radius:16px;overflow:hidden;border:1.5px solid #f3f0eb;box-shadow:0 2px 8px rgba(0,0,0,0.06);transition:all 0.2s;}
+  .card.open{border-color:#d97706;box-shadow:0 6px 20px rgba(180,83,9,0.12);}
+  .card-top{display:flex;cursor:pointer;padding:15px 12px 15px 15px;gap:12px;align-items:flex-start;}
+  .icon{width:46px;height:46px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;}
+  .card-info{flex:1;min-width:0;}
+  .badges{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:3px;}
+  .badge{font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;text-transform:uppercase;}
+  .card-title{font-weight:700;font-size:14px;color:#1c1917;line-height:1.3;margin-bottom:3px;}
+  .card-meta{display:flex;gap:8px;flex-wrap:wrap;}
+  .card-date{font-size:11px;color:#78350f;font-weight:600;}
+  .card-loc{font-size:11px;color:#6b7280;}
+  .card-actions{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 12px 0 4px;gap:7px;}
+  .fav-btn{border-radius:7px;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;border:1.5px solid #e7e5e4;background:#f9f9f9;}
+  .fav-btn.active{border-color:#f59e0b;background:#fef3c7;}
+  .chevron{font-size:16px;color:#d97706;cursor:pointer;line-height:1;transition:transform 0.2s;}
+  .card-body{border-top:1px solid #f3f0eb;padding:0 15px 16px;animation:fadeIn 0.2s ease;}
+  .card-desc{color:#57534e;font-size:13px;line-height:1.6;margin:12px 0 8px;}
+  .card-addr{font-size:12px;color:#78350f;margin-bottom:10px;}
+  .sched-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:#b45309;font-weight:700;margin-bottom:7px;}
+  .sched-item{display:flex;gap:10px;align-items:center;border-radius:8px;padding:7px 11px;margin-bottom:4px;}
+  .sched-time{font-size:11px;font-weight:700;min-width:68px;}
+  .sched-name{font-size:12px;color:#1c1917;}
+  .ticket-link{display:inline-block;margin-top:12px;padding:8px 16px;background:#b45309;color:#fff;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none;}
+  .empty{text-align:center;padding:50px 16px;}
+  .error-box{margin:20px 0;background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:14px 16px;color:#b91c1c;font-size:13px;}
+  .start-tags{display:flex;justify-content:center;gap:7px;flex-wrap:wrap;margin-top:20px;}
+  .tag{background:#fef3c7;color:#92400e;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="header">
+  <div style="font-size:40px;margin-bottom:4px">🏡</div>
+  <h1>Family Events Finder</h1>
+  <p>Festivals · Markets · Breweries · Free fun near you</p>
+  <div class="search-row">
+    <input id="zipInput" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="ZIP code" maxlength="5"/>
+    <button id="searchBtn" onclick="doSearch()">Search</button>
+  </div>
+  <div class="hint">Any US ZIP · tap Search or press Enter</div>
+</div>
+
+<div class="body">
+  <div id="app">
+    <div class="empty">
+      <div style="font-size:48px;margin-bottom:10px">🎠</div>
+      <h2 style="color:#78350f;font-weight:700;margin-bottom:8px">Find family fun near you</h2>
+      <p style="color:#92400e;font-size:14px;max-width:360px;margin:0 auto">Enter your ZIP code to find local festivals, farmers markets, brewery events, and free community fun.</p>
+      <div class="start-tags">
+        <span class="tag">🌽 Markets</span>
+        <span class="tag">🍺 Brewery</span>
+        <span class="tag">🎪 Festivals</span>
+        <span class="tag">🤝 Community</span>
+        <span class="tag">🎵 Music</span>
+        <span class="tag">👨‍👩‍👧‍👦 Family</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Config ─────────────────────────────────────────────────────────────────
+// Once deployed to Vercel, this points to YOUR proxy URL
+// Replace "YOUR-PROJECT-NAME" with your actual Vercel project name
+const PROXY_URL = "https://YOUR-PROJECT-NAME.vercel.app/api/events";
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = {
+  events: [], zip: "", typeFilter: "All",
+  freeOnly: false, favs: new Set(), showFavsOnly: false, expandedId: null
+};
+
+const TYPE_COLORS = {
+  Festival:{bg:"#fff3e0",accent:"#e65100",badge:"#ff6d00"},
+  Market:{bg:"#e8f5e9",accent:"#1b5e20",badge:"#2e7d32"},
+  Music:{bg:"#fce4ec",accent:"#880e4f",badge:"#c2185b"},
+  Sports:{bg:"#e8f5e9",accent:"#1b5e20",badge:"#388e3c"},
+  Arts:{bg:"#ede7f6",accent:"#4a148c",badge:"#7b1fa2"},
+  Family:{bg:"#fff8e1",accent:"#f57f17",badge:"#ffa000"},
+  Food:{bg:"#fef9c3",accent:"#92400e",badge:"#b45309"},
+  Community:{bg:"#ecfdf5",accent:"#065f46",badge:"#059669"},
+  Brewery:{bg:"#fdf4ff",accent:"#6b21a8",badge:"#9333ea"},
+  Carnival:{bg:"#fce4ec",accent:"#880e4f",badge:"#ad1457"},
+  Kids:{bg:"#e0f7fa",accent:"#006064",badge:"#00838f"},
+  Other:{bg:"#f3f4f6",accent:"#374151",badge:"#6b7280"},
+};
+
+function col(t){ return TYPE_COLORS[t] || TYPE_COLORS.Other; }
+
+function formatDate(d){
+  if(!d) return "Date TBD";
+  try{ return new Date(d+"T00:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); }
+  catch{ return d; }
+}
+
+function stars(n){
+  let s="";
+  for(let i=1;i<=5;i++) s+=`<span style="font-size:11px;color:${i<=n?"#f59e0b":"#d1d5db"}">★</span>`;
+  return s;
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────
+async function doSearch(){
+  const zip = document.getElementById("zipInput").value.trim();
+  if(zip.length < 5) return;
+
+  state.zip = zip;
+  state.events = [];
+  state.typeFilter = "All";
+  state.freeOnly = false;
+  state.showFavsOnly = false;
+  state.expandedId = null;
+
+  document.getElementById("searchBtn").disabled = true;
+  document.getElementById("searchBtn").textContent = "...";
+  document.getElementById("app").innerHTML = `
+    <div class="loading">
+      <div class="spinner">🔍</div>
+      <p style="margin-top:10px;font-size:14px">Finding events near ${zip}…</p>
+      <p style="font-size:12px;color:#b45309;margin-top:4px">Checking Ticketmaster & Eventbrite…</p>
+    </div>`;
+
+  try {
+    const res = await fetch(`${PROXY_URL}?zip=${zip}`);
+    if(!res.ok) throw new Error(`Server error: ${res.status}`);
+    const data = await res.json();
+    state.events = data.events || [];
+
+    if(data.errors?.length){
+      console.warn("API warnings:", data.errors);
+    }
+  } catch(e) {
+    document.getElementById("app").innerHTML = `
+      <div class="error-box">⚠️ <strong>Could not load events:</strong> ${e.message}<br>
+      <small style="color:#7f1d1d;margin-top:6px;display:block">Make sure you've deployed to Vercel and updated the PROXY_URL in this file.</small></div>`;
+    document.getElementById("searchBtn").disabled = false;
+    document.getElementById("searchBtn").textContent = "Search";
+    return;
+  }
+
+  document.getElementById("searchBtn").disabled = false;
+  document.getElementById("searchBtn").textContent = "Search";
+  render();
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function getFiltered(){
+  return state.events.filter(ev => {
+    if(state.showFavsOnly && !state.favs.has(ev.id)) return false;
+    if(state.typeFilter !== "All" && ev.type !== state.typeFilter) return false;
+    if(state.freeOnly && ev.cost !== "Free") return false;
+    return true;
+  });
+}
+
+function render(){
+  const filtered = getFiltered();
+  const types = ["All", ...new Set(state.events.map(e=>e.type))];
+  const freeCount = state.events.filter(e=>e.cost==="Free").length;
+  const tmCount = state.events.filter(e=>e.source==="Ticketmaster").length;
+  const ebCount = state.events.filter(e=>e.source==="Eventbrite").length;
+
+  if(state.events.length === 0){
+    document.getElementById("app").innerHTML = `
+      <div class="empty">
+        <div style="font-size:44px">😕</div>
+        <p style="color:#78350f;font-weight:700;margin-top:10px">No events found near ${state.zip}</p>
+        <p style="color:#92400e;font-size:13px">Try a nearby ZIP or check back closer to the weekend.</p>
+      </div>`;
+    return;
+  }
+
+  let html = `
+    <div class="stats">
+      <span class="chip" style="background:#fef3c7;color:#92400e">${state.events.length} Events</span>
+      <span class="chip" style="background:#dbeafe;color:#1d4ed8">🎫 ${tmCount} Ticketmaster</span>
+      <span class="chip" style="background:#fef9c3;color:#92400e">🎟 ${ebCount} Eventbrite</span>
+      <span class="chip" style="background:#dcfce7;color:#166534">✅ ${freeCount} Free</span>
+    </div>
+    <div class="filter-box">
+      <div class="filter-label">Event Type</div>
+      <div class="filter-row">
+        ${types.map(t=>`<button class="fbtn ${state.typeFilter===t?"active-o":""}" onclick="setType('${t}')">${t}</button>`).join("")}
+      </div>
+      <div class="filter-row">
+        <button class="fbtn ${state.freeOnly?"active-g":""}" onclick="toggleFree()">✅ Free Only</button>
+        <button class="fbtn ${state.showFavsOnly?"active-y":""}" onclick="toggleFavs()">⭐ Favorites${state.favs.size>0?` (${state.favs.size})`:""}</button>
+        <button class="fbtn" onclick="clearFilters()">Clear</button>
+      </div>
+    </div>
+    <p style="color:#92400e;font-size:12px;margin-bottom:10px;text-align:center">
+      Showing <strong>${filtered.length}</strong> of <strong>${state.events.length}</strong> events near <strong>${state.zip}</strong>
+    </p>`;
+
+  if(filtered.length === 0){
+    html += `<div style="text-align:center;padding:28px 0">
+      <p style="color:#92400e">No events match your filters.</p>
+      <button onclick="clearFilters()" style="margin-top:8px;padding:7px 16px;border-radius:9px;background:#b45309;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Georgia,serif">Clear Filters</button>
+    </div>`;
+  }
+
+  html += `<div class="events">`;
+  for(const ev of filtered){
+    const c = col(ev.type);
+    const isOpen = state.expandedId === ev.id;
+    const isFav = state.favs.has(ev.id);
+    const costBg = ev.cost==="Free"?"#dcfce7":ev.cost==="See site"?"#f3f4f6":"#fff7ed";
+    const costClr = ev.cost==="Free"?"#166534":"#92400e";
+    const srcBg = ev.source==="Eventbrite"?"#fef9c3":"#dbeafe";
+    const srcClr = ev.source==="Eventbrite"?"#92400e":"#1d4ed8";
+    const srcLabel = ev.source==="Eventbrite"?"🎟 Eventbrite":"🎫 Ticketmaster";
+
+    html += `
+    <div class="card ${isOpen?"open":""}" id="card-${ev.id}">
+      <div style="display:flex">
+        <div class="card-top" style="flex:1" onclick="toggleCard('${ev.id}')">
+          <div class="icon" style="background:${c.bg}">${ev.emoji||"📅"}</div>
+          <div class="card-info">
+            <div class="badges">
+              <span class="badge" style="background:${c.badge};color:#fff">${ev.type}</span>
+              <span style="font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;background:${costBg};color:${costClr}">${ev.cost}</span>
+              <span style="font-size:10px;font-weight:600;padding:1px 7px;border-radius:999px;background:${srcBg};color:${srcClr}">${srcLabel}</span>
+            </div>
+            <div class="card-title">${ev.name}</div>
+            <div class="card-meta">
+              <span class="card-date">📅 ${formatDate(ev.startDate)}</span>
+              <span class="card-loc">📍 ${ev.location}</span>
+            </div>
+            <div style="margin-top:4px">${stars(ev.familyRating||3)}</div>
+          </div>
+        </div>
+        <div class="card-actions">
+          <button class="fav-btn ${isFav?"active":""}" onclick="toggleFav('${ev.id}')">${isFav?"⭐":"☆"}</button>
+          <div class="chevron" style="transform:${isOpen?"rotate(180deg)":"rotate(0deg)"}" onclick="toggleCard('${ev.id}')">⌄</div>
+        </div>
+      </div>
+      ${isOpen ? buildBody(ev, c) : ""}
+    </div>`;
+  }
+  html += `</div>`;
+  document.getElementById("app").innerHTML = html;
+}
+
+function buildBody(ev, c){
+  let h = `<div class="card-body" style="border-top:1px solid ${c.bg}">`;
+  if(ev.description) h += `<p class="card-desc">${ev.description}</p>`;
+  if(ev.address) h += `<div class="card-addr">📍 ${ev.address}</div>`;
+  if(ev.subEvents?.length){
+    h += `<div class="sched-label">${ev.source==="Eventbrite"?"🕐 Schedule":"🎤 Lineup"}</div>`;
+    for(const se of ev.subEvents){
+      h += `<div class="sched-item" style="background:${c.bg}">
+        <span class="sched-time" style="color:${c.accent}">${se.time}</span>
+        <span class="sched-name">${se.name}</span>
+        ${se.day?`<span style="font-size:10px;color:#9ca3af;margin-left:auto">${se.day}</span>`:""}
+      </div>`;
+    }
+  }
+  if(ev.url) h += `<a href="${ev.url}" target="_blank" class="ticket-link">${ev.source==="Eventbrite"?"🎟️ View on Eventbrite →":"🎫 Get Tickets →"}</a>`;
+  h += `</div>`;
+  return h;
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function toggleCard(id){
+  state.expandedId = state.expandedId===id ? null : id;
+  render();
+  if(state.expandedId){
+    setTimeout(()=>{ document.getElementById("card-"+id)?.scrollIntoView({behavior:"smooth",block:"nearest"}); },50);
+  }
+}
+function toggleFav(id){ state.favs.has(id)?state.favs.delete(id):state.favs.add(id); render(); }
+function setType(t){ state.typeFilter=t; render(); }
+function toggleFree(){ state.freeOnly=!state.freeOnly; render(); }
+function toggleFavs(){ state.showFavsOnly=!state.showFavsOnly; render(); }
+function clearFilters(){ state.typeFilter="All"; state.freeOnly=false; state.showFavsOnly=false; render(); }
+
+// Enter key on ZIP input
+document.getElementById("zipInput").addEventListener("keydown", e=>{ if(e.key==="Enter") doSearch(); });
+</script>
+</body>
+</html>
