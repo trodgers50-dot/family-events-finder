@@ -10,13 +10,15 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#0a0a0f;color:#fff;min-height:100vh;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="module">
 
-// ── Photo map ─────────────────────────────────────────────────────────────────
+const PROXY_URL = "https://family-events-finder.vercel.app/api/events";
+
 const TYPE_PHOTOS = {
   Festival:["https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80","https://images.unsplash.com/photo-1506157786151-b8491531f063?w=600&q=80"],
   Market:["https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=600&q=80","https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&q=80"],
@@ -31,7 +33,6 @@ const TYPE_PHOTOS = {
 };
 function getPhoto(type,id){const p=TYPE_PHOTOS[type]||TYPE_PHOTOS.Other;return p[parseInt(id)%p.length];}
 
-// ── Region ────────────────────────────────────────────────────────────────────
 function getRegionInfo(zip){
   const z=parseInt(zip);
   if(z>=20000&&z<=24699)return{city:"Virginia Beach",state:"VA",region:"VA"};
@@ -50,6 +51,7 @@ function getRegionInfo(zip){
   if(z>=94100&&z<=94199)return{city:"San Francisco",state:"CA",region:"CA"};
   return{city:"your area",state:"",region:"DEFAULT"};
 }
+
 function latLngToRegion(lat,lng){
   if(lat>=36&&lat<=37.5&&lng>=-77&&lng<=-74)return{city:"Virginia Beach",state:"VA",region:"VA",zip:"23464"};
   if(lat>=40&&lat<=41&&lng>=-75&&lng<=-73)return{city:"New York",state:"NY",region:"NY",zip:"10001"};
@@ -81,21 +83,45 @@ const TYPE_META={
   Festival:{color:"#f97316"},Market:{color:"#22c55e"},Music:{color:"#ec4899"},
   Arts:{color:"#a855f7"},Family:{color:"#3b82f6"},Food:{color:"#eab308"},
   Community:{color:"#14b8a6"},Brewery:{color:"#8b5cf6"},Carnival:{color:"#f43f5e"},
-  Kids:{color:"#06b6d4"},Other:{color:"#94a3b8"},
+  Kids:{color:"#06b6d4"},Sports:{color:"#22c55e"},Other:{color:"#94a3b8"},
 };
-const TYPE_ICONS={Festival:"🎪",Market:"🌿",Music:"🎵",Arts:"🎨",Family:"👨‍👩‍👧",Food:"🍴",Community:"◎",Brewery:"◈",Carnival:"🎡",Kids:"✦",Other:"●"};
+const TYPE_ICONS={Festival:"🎪",Market:"🌿",Music:"🎵",Arts:"🎨",Family:"👨‍👩‍👧",Food:"🍴",Community:"◎",Brewery:"◈",Carnival:"🎡",Kids:"✦",Sports:"🏆",Other:"●"};
 
-function shuffle(a){return [...a].sort(()=>Math.random()-0.5);}
+function shuffle(a){return[...a].sort(()=>Math.random()-0.5);}
 function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().split("T")[0];}
 function formatDate(d){if(!d)return"TBD";try{return new Date(d+"T00:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});}catch{return d;}}
 function isWeekend(ds){if(!ds)return false;const t=new Date();t.setHours(0,0,0,0);const day=t.getDay();const fri=new Date(t);fri.setDate(t.getDate()+((5-day+7)%7));const sun=new Date(t);sun.setDate(t.getDate()+((7-day)%7||7));const ev=new Date(ds+"T00:00:00");return ev>=fri&&ev<=sun;}
 function getWeather(ds,r){
   const W={VA:[{i:"🌨",l:"38°",t:"Cold"},{i:"🌦",l:"52°",t:"Cool"},{i:"🌤",l:"62°",t:"Mild"},{i:"⛅",l:"70°",t:"Nice"},{i:"☀",l:"78°",t:"Warm"},{i:"🌡",l:"88°",t:"Hot"},{i:"🌡",l:"90°",t:"Hot"},{i:"🌡",l:"88°",t:"Hot"},{i:"☀",l:"80°",t:"Warm"},{i:"🌤",l:"68°",t:"Mild"},{i:"🌥",l:"56°",t:"Cool"},{i:"🌨",l:"44°",t:"Cold"}],DEFAULT:[{i:"❄",l:"32°",t:"Cold"},{i:"🌥",l:"42°",t:"Cold"},{i:"🌤",l:"55°",t:"Mild"},{i:"⛅",l:"65°",t:"Nice"},{i:"☀",l:"72°",t:"Warm"},{i:"🌡",l:"82°",t:"Hot"},{i:"🌡",l:"85°",t:"Hot"},{i:"🌡",l:"83°",t:"Hot"},{i:"☀",l:"75°",t:"Warm"},{i:"🌤",l:"63°",t:"Cool"},{i:"🌥",l:"50°",t:"Cool"},{i:"❄",l:"38°",t:"Cold"}]};
-  const m=new Date((ds||"2026-07-01")+"T00:00:00").getMonth();
-  return(W[r]||W.DEFAULT)[m];
+  const mo=new Date((ds||"2026-07-01")+"T00:00:00").getMonth();
+  return(W[r]||W.DEFAULT)[mo];
 }
 
-function generateEvents(zip,regionOverride){
+function classifyTM(e){
+  const seg=e.classifications?.[0]?.segment?.name||"";
+  const n=(e.name||"").toLowerCase();
+  if(seg==="Sports")return"Sports";
+  if(seg==="Music")return"Music";
+  if(seg==="Arts & Theatre")return"Arts";
+  if(n.includes("family")||n.includes("kid")||n.includes("children"))return"Family";
+  if(n.includes("festival")||n.includes("fest"))return"Festival";
+  if(n.includes("carnival")||n.includes("fair"))return"Carnival";
+  if(n.includes("market"))return"Market";
+  return"Other";
+}
+function classifyEB(e){
+  const n=(e.name?.text||"").toLowerCase();
+  const d=(e.description?.text||"").toLowerCase();
+  const c=n+" "+d;
+  if(c.includes("brewery")||c.includes("brewing")||c.includes("beer"))return"Brewery";
+  if(c.includes("farmer")||c.includes("market")||c.includes("produce"))return"Market";
+  if(c.includes("food")||c.includes("taste")||c.includes("culinary"))return"Food";
+  if(c.includes("kid")||c.includes("children")||c.includes("family"))return"Family";
+  if(c.includes("festival")||c.includes("fest"))return"Festival";
+  return"Community";
+}
+
+function generateFallback(zip,regionOverride){
   const info=regionOverride||getRegionInfo(zip);
   const venues=shuffle(VENUES[info.region]||VENUES.DEFAULT);
   const city=info.city;
@@ -104,9 +130,9 @@ function generateEvents(zip,regionOverride){
     {name:"Family Brewery Day",type:"Brewery",cost:"Free",days:10,rating:4,desc:"Local brewery opens for families — kids lemonade, yard games, and a live band.",sched:["12:00 PM · Gates Open","1:00 PM · Live Band","3:00 PM · Homebrew Awards","6:00 PM · Closes"]},
     {name:`${city} Summer Festival`,type:"Festival",cost:"Free",days:17,rating:5,desc:"The biggest free community festival of the summer. Food trucks, performances, and fireworks.",sched:["10:00 AM · Opens","12:00 PM · Kids Parade","3:00 PM · Main Stage","9:00 PM · Fireworks"]},
     {name:"Kids STEM Expo",type:"Kids",cost:"$5",days:22,rating:5,desc:"Robotics demos and hands-on science for kids ages 5–14.",sched:["9:00 AM · Doors Open","10:00 AM · Robotics Challenge","12:00 PM · Coding Workshop","2:00 PM · Science Fair"]},
-    {name:"Outdoor Movie Night",type:"Community",cost:"Free",days:6,rating:4,desc:"Free film under the stars with food trucks. Bring a blanket — starts at dusk.",sched:["6:00 PM · Food Trucks Open","8:00 PM · Movie Starts"]},
+    {name:"Outdoor Movie Night",type:"Community",cost:"Free",days:6,rating:4,desc:"Free film under the stars with food trucks. Bring a blanket.",sched:["6:00 PM · Food Trucks Open","8:00 PM · Movie Starts"]},
     {name:"Art & Craft Fair",type:"Arts",cost:"Free",days:30,rating:4,desc:"80+ local artists, free kids activities, face painting, and live entertainment.",sched:["9:00 AM · Opens","10:00 AM · Kids Workshop","1:00 PM · Face Painting","4:00 PM · Closes"]},
-    {name:"Back to School Carnival",type:"Carnival",cost:"Free",days:45,rating:5,desc:"Bounce houses, prizes, and free school supplies giveaway for kids ages 3–14.",sched:["11:00 AM · Opens","12:00 PM · Supplies Giveaway","2:00 PM · Pie Eating Contest","4:00 PM · Raffle"]},
+    {name:"Back to School Carnival",type:"Carnival",cost:"Free",days:45,rating:5,desc:"Bounce houses, prizes, and free school supplies for kids ages 3–14.",sched:["11:00 AM · Opens","12:00 PM · Supplies Giveaway","2:00 PM · Pie Eating Contest","4:00 PM · Raffle"]},
     {name:"Jazz in the Park",type:"Music",cost:"Free",days:14,rating:3,desc:"Free outdoor jazz and blues every weekend this summer.",sched:["5:00 PM · Opening Act","7:00 PM · Headliner","9:00 PM · Encore"]},
     {name:"Food Truck Festival",type:"Food",cost:"Free",days:35,rating:4,desc:"30+ food trucks, live music, and a family eating contest.",sched:["11:00 AM · Opens","12:00 PM · Voting Opens","2:00 PM · Kids Contest","5:00 PM · Winner"]},
     {name:"Toddler Splash Day",type:"Kids",cost:"$3",days:12,rating:5,desc:"Splash pads, bubbles, floaties, and story time for babies and toddlers ages 0–5.",sched:["9:00 AM · Splash Pad Opens","10:00 AM · Bubble Party","11:00 AM · Story Time","12:00 PM · Closes"]},
@@ -115,30 +141,72 @@ function generateEvents(zip,regionOverride){
   ];
   return T.map((t,i)=>{
     const date=addDays(t.days);
-    return{id:String(i+1),name:t.name,type:t.type,emoji:TYPE_ICONS[t.type]||"●",photo:getPhoto(t.type,String(i+1)),date,location:venues[i%venues.length],address:`${venues[i%venues.length]}, ${city}${info.state?", "+info.state:""}`,cost:t.cost,desc:t.desc,rating:t.rating,weather:getWeather(date,info.region),isWeekend:isWeekend(date),sched:t.sched};
+    return{id:String(i+1),name:t.name,type:t.type,emoji:TYPE_ICONS[t.type]||"●",photo:getPhoto(t.type,String(i+1)),date,location:venues[i%venues.length],address:`${venues[i%venues.length]}, ${city}${info.state?", "+info.state:""}`,cost:t.cost,desc:t.desc,rating:t.rating,weather:getWeather(date,info.region),isWeekend:isWeekend(date),sched:t.sched,source:"Local"};
   });
 }
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let state={screen:"home",zip:"",events:[],info:null,openId:null,typeFilter:"All",freeOnly:false,weekendOnly:false,favs:new Set(),toast:"",gpsLoading:false};
-function setState(updates){Object.assign(state,updates);render();}
-function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}),2200);}
+async function fetchLiveEvents(zip){
+  try{
+    const res=await fetch(`${PROXY_URL}?zip=${zip}`);
+    if(!res.ok)throw new Error("API error");
+    const data=await res.json();
+    if(!data.events||data.events.length===0)throw new Error("No events");
+    return data.events.map(ev=>({
+      ...ev,
+      emoji:TYPE_ICONS[ev.type]||"●",
+      photo:getPhoto(ev.type,ev.id),
+      weather:getWeather(ev.startDate,getRegionInfo(zip).region),
+      isWeekend:isWeekend(ev.startDate),
+      date:ev.startDate,
+      sched:ev.subEvents?.map(s=>`${s.time} · ${s.name}`)||[],
+      rating:ev.familyRating||4,
+    }));
+  }catch(e){
+    console.log("Live fetch failed, using generated events:",e.message);
+    return null;
+  }
+}
 
-// ── Render ────────────────────────────────────────────────────────────────────
+let state={screen:"home",zip:"",events:[],info:null,openId:null,typeFilter:"All",freeOnly:false,weekendOnly:false,favs:new Set(),toast:"",gpsLoading:false,loading:false,liveData:false};
+function setState(u){Object.assign(state,u);render();}
+function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}),2500);}
 function m(t){return TYPE_META[t]||{color:"#94a3b8"};}
 
+async function doSearch(zip,regionOverride){
+  setState({loading:true,screen:"results",events:[],openId:null,typeFilter:"All",freeOnly:false,weekendOnly:false,liveData:false});
+  const info=regionOverride||getRegionInfo(zip);
+  setState({info,zip});
+  const live=await fetchLiveEvents(zip);
+  if(live&&live.length>0){
+    setState({events:live,loading:false,liveData:true});
+    showToast(`✓ ${live.length} live events loaded`);
+  }else{
+    setState({events:generateFallback(zip,regionOverride),loading:false,liveData:false});
+  }
+}
+
+function detectLocation(){
+  if(!navigator.geolocation){showToast("GPS not available");return;}
+  setState({gpsLoading:true});
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const{latitude:lat,longitude:lng}=pos.coords;
+    const r=latLngToRegion(lat,lng);
+    setState({gpsLoading:false});
+    doSearch(r.zip,r);
+    showToast(`📍 Found you in ${r.city}`);
+  },()=>{setState({gpsLoading:false});showToast("Couldn't get location — enter ZIP manually");},{timeout:8000});
+}
+
 function render(){
-  const root=document.getElementById("root");
-  if(state.screen==="home"){root.innerHTML=renderHome();}
-  else{root.innerHTML=renderResults();}
+  document.getElementById("root").innerHTML=state.screen==="home"?renderHome():renderResults();
   bindEvents();
 }
 
 function renderHome(){
   const digits=[0,1,2,3,4].map(i=>`<div style="width:44px;height:52px;border-radius:10px;background:${state.zip[i]?"rgba(255,255,255,0.12)":"rgba(255,255,255,0.05)"};border:1.5px solid ${state.zip[i]?"rgba(255,255,255,0.3)":"rgba(255,255,255,0.08)"};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:#fff">${state.zip[i]||""}</div>`).join("");
   const keys=["1","2","3","4","5","6","7","8","9","⌫","0","→"].map(k=>{
-    const isSearch=k==="→",isBack=k==="⌫",ready=state.zip.length===5,disabled=isSearch&&!ready;
-    return`<div class="key" data-key="${k}" style="height:56px;border-radius:14px;background:${isSearch?(ready?"rgba(255,255,255,0.95)":"rgba(255,255,255,0.05)"):isBack?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.08)"};color:${isSearch?(ready?"#0f172a":"rgba(255,255,255,0.15)"):isBack?"rgba(255,255,255,0.5)":"#fff"};display:flex;align-items:center;justify-content:center;font-size:${isSearch?13:20}px;font-weight:${isSearch?700:500};cursor:${disabled?"not-allowed":"pointer"};border:1px solid rgba(255,255,255,0.06);user-select:none">${isSearch?"Search":k}</div>`;
+    const isS=k==="→",isB=k==="⌫",ready=state.zip.length===5,dis=isS&&!ready;
+    return`<div class="key" data-key="${k}" style="height:56px;border-radius:14px;background:${isS?(ready?"rgba(255,255,255,0.95)":"rgba(255,255,255,0.05)"):isB?"rgba(255,255,255,0.06)":"rgba(255,255,255,0.08)"};color:${isS?(ready?"#0f172a":"rgba(255,255,255,0.15)"):isB?"rgba(255,255,255,0.5)":"#fff"};display:flex;align-items:center;justify-content:center;font-size:${isS?13:20}px;font-weight:${isS?700:500};cursor:${dis?"not-allowed":"pointer"};border:1px solid rgba(255,255,255,0.06);user-select:none">${isS?"Search":k}</div>`;
   }).join("");
   return`
   ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap">${state.toast}</div>`:""}
@@ -165,8 +233,7 @@ function renderHome(){
         ${["Markets","Festivals","Brewery","Kids","Community","Music"].map(t=>`<span style="padding:4px 11px;border-radius:999px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.25);font-size:11px;border:1px solid rgba(255,255,255,0.05)">${t}</span>`).join("")}
       </div>
     </div>
-  </div>
-  <style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>`;
+  </div>`;
 }
 
 function renderResults(){
@@ -180,20 +247,30 @@ function renderResults(){
   const freeCount=state.events.filter(e=>e.cost==="Free").length;
   const weekendCount=state.events.filter(e=>e.isWeekend).length;
 
+  if(state.loading){
+    return`<div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+      <div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(99,102,241,0.2);border-top-color:#6366f1;animation:spin 0.8s linear infinite"></div>
+      <p style="color:rgba(255,255,255,0.4);font-size:14px">Finding events near ${state.zip}…</p>
+      <p style="color:rgba(255,255,255,0.2);font-size:12px">Checking Ticketmaster & Eventbrite</p>
+    </div>`;
+  }
+
   const cards=filtered.map((ev,idx)=>{
     const meta=m(ev.type);
     const isOpen=state.openId===ev.id;
     const isFav=state.favs.has(ev.id);
+    const srcBadge=ev.source==="Ticketmaster"?`<span style="font-size:9px;font-weight:600;color:#60a5fa;background:rgba(96,165,250,0.1);padding:1px 5px;border-radius:3px">🎫 TM</span>`:ev.source==="Eventbrite"?`<span style="font-size:9px;font-weight:600;color:#f59e0b;background:rgba(245,158,11,0.1);padding:1px 5px;border-radius:3px">🎟 EB</span>`:"";
     return`
-    <div class="card" data-id="${ev.id}" style="border-radius:16px;overflow:hidden;background:${isOpen?"rgba(255,255,255,0.04)":"transparent"};border:1px solid ${isOpen?"rgba(255,255,255,0.07)":"transparent"};margin-bottom:${isOpen?"6px":"0"};transition:all 0.2s">
-      ${isOpen?`<div style="position:relative;height:160px;overflow:hidden;background:rgba(255,255,255,0.04)"><img src="${ev.photo}" alt="${ev.name}" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.7"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.8) 0%,transparent 50%)"></div><div style="position:absolute;top:10px;left:12px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,0.5);color:${meta.color};font-size:11px;font-weight:700">${ev.type}</div>${ev.isWeekend?`<div style="position:absolute;top:10px;right:12px;padding:4px 10px;border-radius:999px;background:rgba(99,102,241,0.6);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
+    <div style="border-radius:16px;overflow:hidden;background:${isOpen?"rgba(255,255,255,0.04)":"transparent"};border:1px solid ${isOpen?"rgba(255,255,255,0.07)":"transparent"};margin-bottom:${isOpen?"6px":"0"};transition:all 0.2s">
+      ${isOpen?`<div style="position:relative;height:160px;overflow:hidden;background:rgba(255,255,255,0.03)"><img src="${ev.photo}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.7"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.85) 0%,transparent 55%)"></div><div style="position:absolute;top:10px;left:12px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,0.5);color:${meta.color};font-size:11px;font-weight:700">${ev.type}</div>${ev.isWeekend?`<div style="position:absolute;top:10px;right:12px;padding:4px 10px;border-radius:999px;background:rgba(99,102,241,0.7);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
       <div class="card-row" data-id="${ev.id}" style="display:flex;align-items:center;gap:12px;padding:14px 4px;cursor:pointer;border-bottom:${idx<filtered.length-1&&!isOpen?"1px solid rgba(255,255,255,0.04)":"none"}">
         <div style="width:44px;height:44px;border-radius:12px;background:${meta.color}15;border:1px solid ${meta.color}25;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:${meta.color}">${ev.emoji}</div>
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;flex-wrap:wrap">
             ${!isOpen?`<span style="font-size:10px;font-weight:700;color:${meta.color};text-transform:uppercase;letter-spacing:0.8px">${ev.type}</span>`:""}
-            ${ev.isWeekend&&!isOpen?`<span style="font-size:10px;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.1);padding:1px 6px;border-radius:4px">Weekend</span>`:""}
-            ${ev.cost==="Free"?`<span style="font-size:10px;font-weight:600;color:#6ee7b7;background:rgba(16,185,129,0.08);padding:1px 6px;border-radius:4px">Free</span>`:""}
+            ${ev.isWeekend&&!isOpen?`<span style="font-size:9px;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px">Weekend</span>`:""}
+            ${ev.cost==="Free"?`<span style="font-size:9px;font-weight:600;color:#6ee7b7;background:rgba(16,185,129,0.08);padding:1px 5px;border-radius:3px">Free</span>`:""}
+            ${srcBadge}
           </div>
           <div style="font-weight:600;font-size:14px;color:#f1f5f9;line-height:1.3;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.name}</div>
           <div style="display:flex;gap:8px">
@@ -208,13 +285,18 @@ function renderResults(){
       </div>
       ${isOpen?`
       <div style="padding:4px 14px 16px">
-        ${ev.weather?`<div style="display:flex;gap:8px;margin-bottom:14px"><div style="flex:1;background:rgba(255,255,255,0.04);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.06)"><div style="font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:2px;text-transform:uppercase">Weather</div><div style="font-size:13px;font-weight:600;color:#f1f5f9">${ev.weather.i} ${ev.weather.l} · ${ev.weather.t}</div></div><div style="flex:1;background:${meta.color}10;border-radius:10px;padding:8px 12px;border:1px solid ${meta.color}18"><div style="font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:2px;text-transform:uppercase">Cost</div><div style="font-size:13px;font-weight:700;color:${meta.color}">${ev.cost}</div></div></div>`:""}
-        <p style="font-size:13px;color:rgba(255,255,255,0.45);line-height:1.65;margin-bottom:14px">${ev.desc}</p>
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          ${ev.weather?`<div style="flex:1;background:rgba(255,255,255,0.04);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.06)"><div style="font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:2px;text-transform:uppercase">Weather</div><div style="font-size:13px;font-weight:600;color:#f1f5f9">${ev.weather.i} ${ev.weather.l} · ${ev.weather.t}</div></div>`:""}
+          <div style="flex:1;background:${meta.color}10;border-radius:10px;padding:8px 12px;border:1px solid ${meta.color}18"><div style="font-size:10px;color:rgba(255,255,255,0.25);margin-bottom:2px;text-transform:uppercase">Cost</div><div style="font-size:13px;font-weight:700;color:${meta.color}">${ev.cost}</div></div>
+        </div>
+        ${ev.desc?`<p style="font-size:13px;color:rgba(255,255,255,0.45);line-height:1.65;margin-bottom:14px">${ev.desc||ev.description||""}</p>`:""}
+        ${ev.address?`<div style="font-size:12px;color:rgba(255,255,255,0.25);margin-bottom:12px">📍 ${ev.address}</div>`:""}
+        ${ev.sched&&ev.sched.length?`
         <div style="font-size:11px;color:rgba(255,255,255,0.18);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px">Schedule</div>
-        ${ev.sched.map((s,i)=>{const p=s.split(" · ");return`<div style="display:flex;gap:12px;padding:8px 0;border-bottom:${i<ev.sched.length-1?"1px solid rgba(255,255,255,0.04)":"none"}"><span style="font-size:12px;color:${meta.color};min-width:72px;font-weight:600">${p[0]}</span><span style="font-size:12px;color:rgba(255,255,255,0.4)">${p[1]||""}</span></div>`;}).join("")}
+        ${ev.sched.map((s,i)=>{const p=s.split(" · ");return`<div style="display:flex;gap:12px;padding:8px 0;border-bottom:${i<ev.sched.length-1?"1px solid rgba(255,255,255,0.04)":"none"}"><span style="font-size:12px;color:${meta.color};min-width:72px;font-weight:600">${p[0]}</span><span style="font-size:12px;color:rgba(255,255,255,0.4)">${p[1]||""}</span></div>`;}).join("")}`:""}
         <div style="display:flex;gap:8px;margin-top:14px">
-          <div class="cal-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${ev.date}" data-addr="${encodeURIComponent(ev.address)}" style="flex:1;padding:11px;border-radius:11px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.07)">📅 Calendar</div>
-          <div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" style="flex:1;padding:11px;border-radius:11px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20">Share ↗</div>
+          <div class="cal-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${ev.date}" data-addr="${encodeURIComponent(ev.address||ev.location)}" style="flex:1;padding:11px;border-radius:11px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.07)">📅 Calendar</div>
+          ${ev.url?`<a href="${ev.url}" target="_blank" style="flex:1;padding:11px;border-radius:11px;background:${meta.color}15;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}25;text-decoration:none">🎟 Get Tickets</a>`:`<div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" style="flex:1;padding:11px;border-radius:11px;background:${meta.color}15;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}25">Share ↗</div>`}
         </div>
       </div>`:""}
     </div>`;
@@ -228,7 +310,7 @@ function renderResults(){
         <div id="back-btn" style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;border:1px solid rgba(255,255,255,0.08);flex-shrink:0">←</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:16px;letter-spacing:-0.3px">${state.info?.city}${state.info?.state?`, ${state.info.state}`:""} <span style="color:rgba(255,255,255,0.25);font-weight:400;font-size:13px">· ${state.zip}</span></div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.3);margin-top:1px">${state.events.length} upcoming events</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.3);margin-top:1px">${state.events.length} events · ${state.liveData?'<span style="color:#6ee7b7">● Live data</span>':'<span style="color:rgba(255,255,255,0.2)">● Generated</span>'}</div>
         </div>
         <div id="new-search-btn" style="padding:7px 14px;border-radius:10px;background:rgba(99,102,241,0.12);color:#a5b4fc;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(99,102,241,0.2);flex-shrink:0;white-space:nowrap">New Search</div>
       </div>
@@ -241,7 +323,7 @@ function renderResults(){
     <div style="max-width:700px;margin:0 auto;padding:14px 14px 80px">
       <div style="margin-bottom:14px">
         <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px">
-          ${types.map(t=>{const active=state.typeFilter===t;const meta=m(t);return`<div class="type-filter" data-type="${t}" style="padding:5px 12px;border-radius:999px;background:${active?meta.color:"rgba(255,255,255,0.05)"};color:${active?"#fff":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:${active?700:400};cursor:pointer;border:1px solid ${active?meta.color:"rgba(255,255,255,0.05)"};transition:all 0.15s">${t}</div>`;}).join("")}
+          ${types.map(t=>{const active=state.typeFilter===t;const meta=m(t);return`<div class="type-filter" data-type="${t}" style="padding:5px 12px;border-radius:999px;background:${active?meta.color:"rgba(255,255,255,0.05)"};color:${active?"#fff":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:${active?700:400};cursor:pointer;border:1px solid ${active?meta.color:"rgba(255,255,255,0.05)"}">${t}</div>`;}).join("")}
         </div>
         <div style="display:flex;gap:5px;flex-wrap:wrap">
           <div class="toggle-free" style="padding:5px 12px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.12)":"rgba(255,255,255,0.04)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.25)"};font-size:12px;font-weight:${state.freeOnly?600:400};cursor:pointer;border:1px solid ${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.05)"}">Free Only</div>
@@ -256,31 +338,27 @@ function renderResults(){
 }
 
 function bindEvents(){
-  // Home screen
   document.querySelectorAll(".key").forEach(el=>{
     el.addEventListener("click",()=>{
       const k=el.dataset.key;
       if(k==="⌫"){setState({zip:state.zip.slice(0,-1)});return;}
-      if(k==="→"){if(state.zip.length===5)doSearch();return;}
+      if(k==="→"){if(state.zip.length===5)doSearch(state.zip);return;}
       if(state.zip.length<5)setState({zip:state.zip+k});
     });
   });
   const gps=document.getElementById("gps-btn");
   if(gps)gps.addEventListener("click",detectLocation);
-  // Results screen
   const back=document.getElementById("back-btn");
   if(back)back.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null}));
-  const newSearch=document.getElementById("new-search-btn");
-  if(newSearch)newSearch.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null}));
+  const ns=document.getElementById("new-search-btn");
+  if(ns)ns.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null}));
   document.querySelectorAll(".card-row").forEach(el=>{
     el.addEventListener("click",()=>{const id=el.dataset.id;setState({openId:state.openId===id?null:id});});
   });
   document.querySelectorAll(".fav-btn").forEach(el=>{
     el.addEventListener("click",e=>{e.stopPropagation();const id=el.dataset.id;const f=new Set(state.favs);f.has(id)?f.delete(id):f.add(id);setState({favs:f});});
   });
-  document.querySelectorAll(".type-filter").forEach(el=>{
-    el.addEventListener("click",()=>setState({typeFilter:el.dataset.type}));
-  });
+  document.querySelectorAll(".type-filter").forEach(el=>{el.addEventListener("click",()=>setState({typeFilter:el.dataset.type}));});
   document.querySelectorAll(".toggle-free").forEach(el=>{el.addEventListener("click",()=>setState({freeOnly:!state.freeOnly}));});
   document.querySelectorAll(".toggle-weekend").forEach(el=>{el.addEventListener("click",()=>setState({weekendOnly:!state.weekendOnly}));});
   document.querySelectorAll(".clear-filters").forEach(el=>{el.addEventListener("click",()=>setState({typeFilter:"All",freeOnly:false,weekendOnly:false}));});
@@ -288,28 +366,10 @@ function bindEvents(){
     el.addEventListener("click",()=>{const d=el.dataset.date?.replace(/-/g,"");window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${el.dataset.name}&dates=${d}/${d}&location=${el.dataset.addr}`,"_blank");});
   });
   document.querySelectorAll(".share-btn").forEach(el=>{
-    el.addEventListener("click",()=>{const txt=`${decodeURIComponent(el.dataset.name)} — ${el.dataset.date} at ${decodeURIComponent(el.dataset.loc)}. ${el.dataset.cost==="Free"?"Free!":""}`;if(navigator.share)navigator.share({title:decodeURIComponent(el.dataset.name),text:txt});else{navigator.clipboard?.writeText(txt);showToast("Copied to clipboard!");}});
+    el.addEventListener("click",()=>{const txt=`${decodeURIComponent(el.dataset.name)} — ${el.dataset.date} at ${decodeURIComponent(el.dataset.loc)}. ${el.dataset.cost==="Free"?"Free!":""}`;if(navigator.share)navigator.share({title:decodeURIComponent(el.dataset.name),text:txt});else{navigator.clipboard?.writeText(txt);showToast("Copied!");}});
   });
 }
 
-function doSearch(){
-  if(state.zip.length!==5)return;
-  const info=getRegionInfo(state.zip);
-  setState({info,events:generateEvents(state.zip),screen:"results",openId:null,typeFilter:"All",freeOnly:false,weekendOnly:false});
-}
-
-function detectLocation(){
-  if(!navigator.geolocation){showToast("GPS not available");return;}
-  setState({gpsLoading:true});
-  navigator.geolocation.getCurrentPosition(pos=>{
-    const{latitude:lat,longitude:lng}=pos.coords;
-    const regionData=latLngToRegion(lat,lng);
-    setState({gpsLoading:false,zip:regionData.zip,info:regionData,events:generateEvents(regionData.zip,regionData),screen:"results",openId:null,typeFilter:"All",freeOnly:false,weekendOnly:false});
-    showToast(`📍 Found you in ${regionData.city}`);
-  },()=>{setState({gpsLoading:false});showToast("Couldn't get location — enter ZIP manually");},{timeout:8000});
-}
-
-// Boot
 render();
 </script>
 </body>
