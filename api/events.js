@@ -72,7 +72,7 @@ export default async function handler(req, res) {
 
   // ── Eventbrite ────────────────────────────────────────────────────────────
   try {
-    const ebUrl = `https://www.eventbriteapi.com/v3/events/search/` +
+    const ebUrl = `https://www.eventbriteapi.com/v3/events/search/?token=${EB_KEY}&location.address=${zip}&location.within=25mi&expand=venue&sort_by=date`; +
       `?token=${EB_KEY}` +
       `&location.address=${zip}` +
       `&location.within=25mi` +
