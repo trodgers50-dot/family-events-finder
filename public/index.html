@@ -407,12 +407,10 @@ function renderHome(){
 }
 
 function renderResults(){
-  const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||30;
   const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
     if(state.whoFilter!=="all"&&ev.who&&!ev.who.includes(state.whoFilter)&&!ev.who.includes("all"))return false;
-    if(!withinDays(ev.date,maxDays))return false;
     return true;
   });
   const types=["All",...new Set(state.events.map(e=>e.type))];
