@@ -1,6 +1,8 @@
- // api/events.js — Vercel Serverless Proxy
-const TM_KEY = process.env.TM_KEY;
-const EB_KEY = process.env.EB_KEY;
+// api/events.js — Multi-source Event Proxy
+// Sources: Ticketmaster + SerpAPI (Google Events) + Virginia Beach City Calendar
+
+const TM_KEY   = process.env.TM_KEY;
+const SERP_KEY = process.env.SERP_KEY;
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -14,8 +16,10 @@ export default async function handler(req, res) {
   }
 
   const results = { events: [], errors: [] };
+  const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
+  const isVB = VB_ZIPS.includes(zip);
 
-  // ── Ticketmaster ────────────────────────────────────────────────────────────
+  // ── 1. Ticketmaster ──────────────────────────────────────────────────────────
   try {
     const url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_KEY}&postalCode=${zip}&countryCode=US&radius=50&unit=miles&size=20&sort=date,asc`;
     const r = await fetch(url);
@@ -33,10 +37,8 @@ export default async function handler(req, res) {
         endDate: date,
         location: venue?.name || "See event page",
         address: [venue?.address?.line1, venue?.city?.name, venue?.state?.stateCode].filter(Boolean).join(", "),
-        lat: parseFloat(venue?.location?.latitude || 0),
-        lng: parseFloat(venue?.location?.longitude || 0),
         description: tm.info || tm.pleaseNote || "",
-        familyRating: type === "Family" || type === "Kids" ? 5 : 4,
+        familyRating: 4,
         cost: tm.priceRanges ? `$${Math.round(tm.priceRanges[0].min)}+` : "See site",
         url: tm.url,
         source: "Ticketmaster",
@@ -52,54 +54,118 @@ export default async function handler(req, res) {
     results.errors.push("Ticketmaster: " + e.message);
   }
 
-  // ── Eventbrite ──────────────────────────────────────────────────────────────
+  // ── 2. SerpAPI — Google Events (general ZIP search) ──────────────────────────
   try {
-    const url = `https://www.eventbriteapi.com/v3/events/search/?token=${EB_KEY}&location.address=${zip}&location.within=25mi&expand=venue&sort_by=date&start_date.keyword=this_week`;
+    const query = encodeURIComponent(`family events near ${zip}`);
+    const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us`;
     const r = await fetch(url);
     const d = await r.json();
-    if (d.error) throw new Error(d.error_description || d.error);
-    const events = (d.events || []).slice(0, 15).map(eb => {
-      const venue = eb.venue;
-      const date = eb.start?.local?.split("T")[0] || "";
-      const startTime = eb.start?.local?.split("T")[1]?.slice(0, 5) || "";
-      const endTime = eb.end?.local?.split("T")[1]?.slice(0, 5) || "";
-      const isFree = eb.is_free === true;
-      const type = classifyEB(eb);
-      const dayLabel = date ? new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" }) : "TBD";
+    if (d.error) throw new Error(d.error);
+    const events = (d.events_results || []).slice(0, 15).map((ev, i) => {
+      const dateStr = parseGoogleDate(ev.date?.start_date || ev.date?.when || "");
       return {
-        id: "eb_" + eb.id,
-        name: eb.name?.text || "Untitled Event",
-        type,
-        startDate: date,
-        endDate: date,
-        location: venue?.name || "See event page",
-        address: venue?.address?.localized_address_display || "",
-        lat: parseFloat(venue?.latitude || 0),
-        lng: parseFloat(venue?.longitude || 0),
-        description: (eb.description?.text || "").slice(0, 300),
-        familyRating: type === "Family" || type === "Market" ? 5 : 4,
-        cost: isFree ? "Free" : eb.ticket_availability?.minimum_ticket_price ? `$${Math.round(eb.ticket_availability.minimum_ticket_price.major_value)}+` : "See site",
-        url: eb.url,
-        source: "Eventbrite",
-        subEvents: startTime ? [
-          { time: startTime, name: "Event starts", day: dayLabel },
-          ...(endTime ? [{ time: endTime, name: "Event ends", day: dayLabel }] : []),
-        ] : [],
+        id: "serp_" + i,
+        name: ev.title || "Local Event",
+        type: classifyByTitle(ev.title || ""),
+        startDate: dateStr,
+        endDate: dateStr,
+        location: ev.venue?.name || ev.address?.[0] || "See event page",
+        address: ev.address?.join(", ") || "",
+        description: ev.description || "",
+        familyRating: 4,
+        cost: ev.ticket_info?.[0]?.price || "Free",
+        url: ev.link || ev.ticket_info?.[0]?.link || "",
+        source: "Google Events",
+        subEvents: [],
       };
     });
     results.events.push(...events);
   } catch (e) {
-    results.errors.push("Eventbrite: " + e.message);
+    results.errors.push("Google Events: " + e.message);
   }
 
-  // Sort by date
+  // ── 3. SerpAPI — Virginia Beach specific search ──────────────────────────────
+  if (isVB) {
+    try {
+      const query = encodeURIComponent(`free family events Virginia Beach farmers market festival`);
+      const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us&location=Virginia+Beach,Virginia,United+States`;
+      const r = await fetch(url);
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      const existingNames = new Set(results.events.map(e => e.name.toLowerCase()));
+      const events = (d.events_results || []).slice(0, 10)
+        .map((ev, i) => {
+          const dateStr = parseGoogleDate(ev.date?.start_date || ev.date?.when || "");
+          return {
+            id: "serp_vb_" + i,
+            name: ev.title || "Local Event",
+            type: classifyByTitle(ev.title || ""),
+            startDate: dateStr,
+            endDate: dateStr,
+            location: ev.venue?.name || ev.address?.[0] || "Virginia Beach",
+            address: ev.address?.join(", ") || "Virginia Beach, VA",
+            description: ev.description || "",
+            familyRating: 5,
+            cost: ev.ticket_info?.[0]?.price || "Free",
+            url: ev.link || "",
+            source: "Google Events",
+            subEvents: [],
+          };
+        })
+        .filter(e => !existingNames.has(e.name.toLowerCase()));
+      results.events.push(...events);
+    } catch (e) {
+      results.errors.push("VB Google Events: " + e.message);
+    }
+
+    // ── 4. Virginia Beach City Parks & Rec Calendar ──────────────────────────
+    try {
+      const url = `https://www.vbgov.com/government/departments/parks-recreation/pages/events.aspx`;
+      const r = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 FamilyEventsApp/1.0" } });
+      const html = await r.text();
+      // Parse event titles and dates from the HTML
+      const titleMatches = [...html.matchAll(/<h[23][^>]*class="[^"]*event[^"]*"[^>]*>([^<]+)<\/h[23]>/gi)];
+      const events = titleMatches.slice(0, 8).map((m, i) => ({
+        id: "vb_city_" + i,
+        name: m[1].trim(),
+        type: classifyByTitle(m[1]),
+        startDate: "",
+        endDate: "",
+        location: "Virginia Beach Parks & Recreation",
+        address: "Virginia Beach, VA",
+        description: "City of Virginia Beach community event.",
+        familyRating: 5,
+        cost: "Free",
+        url: "https://www.vbgov.com/government/departments/parks-recreation/pages/events.aspx",
+        source: "Virginia Beach City",
+        subEvents: [],
+      }));
+      if (events.length > 0) results.events.push(...events);
+    } catch (e) {
+      results.errors.push("VB City Calendar: " + e.message);
+    }
+  }
+
+  // Sort by date, put undated events last
   results.events.sort((a, b) => {
+    if (!a.startDate && !b.startDate) return 0;
     if (!a.startDate) return 1;
     if (!b.startDate) return -1;
     return a.startDate.localeCompare(b.startDate);
   });
 
   return res.status(200).json(results);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function parseGoogleDate(str) {
+  if (!str) return "";
+  try {
+    if (str.match(/^\d{4}-\d{2}-\d{2}$/)) return str;
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    return "";
+  } catch { return ""; }
 }
 
 function classifyTM(e) {
@@ -115,16 +181,16 @@ function classifyTM(e) {
   return "Other";
 }
 
-function classifyEB(e) {
-  const n = (e.name?.text || "").toLowerCase();
-  const d = (e.description?.text || "").toLowerCase();
-  const c = n + " " + d;
-  if (c.includes("brewery") || c.includes("brewing") || c.includes("beer")) return "Brewery";
-  if (c.includes("farmer") || c.includes("market") || c.includes("produce")) return "Market";
-  if (c.includes("food") || c.includes("taste") || c.includes("culinary")) return "Food";
-  if (c.includes("kid") || c.includes("children") || c.includes("family") || c.includes("toddler")) return "Family";
-  if (c.includes("festival") || c.includes("fest")) return "Festival";
-  if (c.includes("carnival") || c.includes("fair")) return "Carnival";
-  if (c.includes("art") || c.includes("craft") || c.includes("music") || c.includes("concert")) return "Arts";
+function classifyByTitle(title) {
+  const t = title.toLowerCase();
+  if (t.includes("brewery") || t.includes("brewing") || t.includes("beer")) return "Brewery";
+  if (t.includes("farmer") || t.includes("market") || t.includes("produce")) return "Market";
+  if (t.includes("food") || t.includes("truck") || t.includes("taste")) return "Food";
+  if (t.includes("kid") || t.includes("children") || t.includes("toddler") || t.includes("stem") || t.includes("splash")) return "Kids";
+  if (t.includes("festival") || t.includes("fest")) return "Festival";
+  if (t.includes("carnival") || t.includes("fair")) return "Carnival";
+  if (t.includes("concert") || t.includes("music") || t.includes("jazz") || t.includes("band")) return "Music";
+  if (t.includes("art") || t.includes("craft") || t.includes("gallery")) return "Arts";
+  if (t.includes("family")) return "Family";
   return "Community";
 }
