@@ -17,7 +17,7 @@ export default async function handler(req, res) {
 
   // ── Ticketmaster ────────────────────────────────────────────────────────────
   try {
-    const url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_KEY}&postalCode=${zip}&countryCode=US&radius=25&unit=miles&size=20&sort=date,asc&classificationName=family,festival,music,arts,sports`;
+    const url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_KEY}&postalCode=${zip}&countryCode=US&radius=50&unit=miles&size=20&sort=date,asc`;
     const r = await fetch(url);
     const d = await r.json();
     if (d.fault) throw new Error(d.fault.faultstring);
