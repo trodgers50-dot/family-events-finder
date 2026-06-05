@@ -449,8 +449,12 @@ function bindEvents(){
   if(inp){
     inp.addEventListener("input",e=>{
       const v=e.target.value;
+      state.searchInput=v;
+      state.searchError="";
+      // Only update suggestions dropdown, not the whole page
       const sugg=getSuggestions(v);
-      setState({searchInput:v, suggestions:sugg, searchError:""});
+      state.suggestions=sugg;
+      renderSuggestions(sugg, v);
     });
     inp.addEventListener("keydown",e=>{
       if(e.key==="Enter"){
@@ -458,11 +462,7 @@ function bindEvents(){
         doSearch(state.searchInput);
       }
     });
-    // Set cursor to end after render
-    setTimeout(()=>{
-      const i=document.getElementById("search-input");
-      if(i){ const len=i.value.length; i.setSelectionRange(len,len); }
-    },10);
+    // Don't refocus - let browser handle it naturally
   }
 
   // Search go button
@@ -509,6 +509,40 @@ function bindEvents(){
   });
   document.querySelectorAll(".share-btn").forEach(el=>{
     el.addEventListener("click",()=>{const txt=`${decodeURIComponent(el.dataset.name)} — ${el.dataset.date} at ${decodeURIComponent(el.dataset.loc)}. ${el.dataset.cost==="Free"?"Free!":""}`;if(navigator.share)navigator.share({title:decodeURIComponent(el.dataset.name),text:txt});else{navigator.clipboard?.writeText(txt);showToast("Copied!");}});
+  });
+}
+
+function renderSuggestions(sugg, inputVal) {
+  // Check if suggestion container exists, create if not
+  let container = document.getElementById("suggestions-container");
+  if (!container) {
+    // Create and insert after the search input wrapper
+    const searchWrapper = document.querySelector("#search-input")?.closest("div[style*='position:relative']");
+    if (!searchWrapper) return;
+    container = document.createElement("div");
+    container.id = "suggestions-container";
+    searchWrapper.parentNode.insertBefore(container, searchWrapper.nextSibling);
+  }
+  if (!sugg || sugg.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `<div style="background:rgba(20,20,30,0.98);border:1px solid rgba(255,255,255,0.08);border-radius:12px;margin-bottom:16px;overflow:hidden">
+    ${sugg.map(s=>`<div class="suggestion-item" data-city="${s.city}" data-state="${s.state}" data-zip="${s.zip}" data-region="${s.region||'DEFAULT'}"
+      style="padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <span style="font-size:14px;color:#f1f5f9;font-weight:500">${s.city}, ${s.state}</span>
+      <span style="font-size:12px;color:rgba(255,255,255,0.25)">${s.zip}</span>
+    </div>`).join("")}
+  </div>`;
+  // Bind suggestion clicks
+  container.querySelectorAll(".suggestion-item").forEach(el=>{
+    el.addEventListener("click",()=>{
+      const r={city:el.dataset.city,state:el.dataset.state,zip:el.dataset.zip,region:el.dataset.region};
+      state.searchInput=r.city+", "+r.state;
+      state.suggestions=[];
+      container.innerHTML="";
+      doSearch(r.city, r);
+    });
   });
 }
 
