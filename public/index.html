@@ -212,11 +212,11 @@ function getWeather(ds,r){
 }
 
 // ── Fallback events ───────────────────────────────────────────────────────────
-function generateFallback(zip, regionOverride, maxDays){
+function generateFallback(zip, regionOverride){
   const info=regionOverride||getRegionInfo(zip);
   const venues=shuffle(VENUES[info.region]||VENUES.DEFAULT);
   const city=info.city;
-  const spread=maxDays||90;
+  const spread=90;
   const T=[
     {name:`${city} Farmers Market`,type:"Market",cost:"Free",who:["all","family","couple","solo"],days:Math.min(3,spread),desc:"Fresh local produce, artisan crafts, and live music every weekend.",sched:["8:00 AM · Market Opens","10:00 AM · Live Music","1:00 PM · Closes"]},
     {name:"Craft Brewery Tour",type:"Brewery",cost:"$15",who:["solo","couple","group"],days:Math.min(8,spread),desc:"Guided tour of local craft breweries with tastings and behind-the-scenes access.",sched:["2:00 PM · Tour Starts","4:00 PM · Tasting Session","5:30 PM · Ends"]},
@@ -237,7 +237,7 @@ function generateFallback(zip, regionOverride, maxDays){
     {name:"Yoga in the Park",type:"Outdoor",cost:"Free",who:["all","solo","couple"],days:Math.min(5,spread),desc:"Free outdoor yoga class for all levels. Mats provided. Beautiful setting.",sched:["8:00 AM · Class Starts","9:30 AM · Meditation","10:00 AM · Ends"]},
     {name:"Neighborhood Block Party",type:"Community",cost:"Free",who:["all"],days:Math.min(30,spread),desc:"Annual block party with grilling, games, and live music for all ages.",sched:["3:00 PM · Starts","6:00 PM · Live Band","8:00 PM · Closes"]},
   ];
-  return T.filter(t=>t.days<=spread).map((t,i)=>{
+  return T.map((t,i)=>{
     const date=addDays(t.days);
     return{
       id:String(i+1),name:t.name,type:t.type,
@@ -290,14 +290,13 @@ async function doSearch(input, regionOverride){
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
-  const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||30;
   setState({loading:true,screen:"results",events:[],openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,liveData:false,info,zip,searchError:""});
   const live=await fetchLiveEvents(zip);
   if(live&&live.length>0){
     setState({events:live,loading:false,liveData:true});
     showToast(`✓ ${live.length} live events loaded`);
   }else{
-    setState({events:generateFallback(zip,info,maxDays),loading:false,liveData:false});
+    setState({events:generateFallback(zip,info),loading:false,liveData:false});
   }
 }
 
