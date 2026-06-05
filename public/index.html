@@ -298,7 +298,7 @@ function renderHome(){
         <div style="display:flex;gap:0;background:rgba(255,255,255,0.07);border-radius:14px;border:1.5px solid ${state.searchInput?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.08)"};overflow:hidden;transition:border-color 0.2s">
           <input id="search-input" type="text" value="${state.searchInput}"
             placeholder="City name or ZIP code…"
-            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" dir="ltr"
             style="flex:1;background:transparent;border:none;outline:none;padding:14px 16px;font-size:16px;color:#fff;min-width:0;"
           />
           <div id="search-go" style="padding:0 18px;display:flex;align-items:center;justify-content:center;background:${state.searchInput.length>1?"#6366f1":"rgba(255,255,255,0.05)"};cursor:${state.searchInput.length>1?"pointer":"default"};transition:background 0.2s;font-size:16px">
