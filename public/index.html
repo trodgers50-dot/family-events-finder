@@ -307,7 +307,7 @@ async function doSearch(input, regionOverride){
     if(data.events && data.events.length > 0){
       const liveEvents = data.events.map(ev=>({
         ...ev,
-        emoji: TYPE_ICONS[ev.type]||"●",
+        emoji: m(ev.type).icon||"●",
         photo: getPhoto(ev.type, ev.id),
         weather: getWeather(ev.startDate, getRegionInfo(zip).region),
         isWeekend: isThisWeekend(ev.startDate),
