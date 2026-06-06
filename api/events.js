@@ -190,9 +190,32 @@ async function fetchVirginiaBeach() {
 function parseDate(str) {
   if (!str) return "";
   try {
+    // Already in YYYY-MM-DD format
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+
+    // Short date like "Jun 6" or "June 6" — add current year
+    const currentYear = new Date().getFullYear();
+    if (/^[A-Za-z]+ \d{1,2}$/.test(str.trim())) {
+      const d = new Date(`${str.trim()} ${currentYear}`);
+      if (!isNaN(d.getTime())) {
+        // If date has already passed this year, use next year
+        const today = new Date(); today.setHours(0,0,0,0);
+        if (d < today) d.setFullYear(currentYear + 1);
+        return d.toISOString().split("T")[0];
+      }
+    }
+
+    // "Jun 6, 2026" or full date string
     const d = new Date(str);
-    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+    if (!isNaN(d.getTime())) {
+      // If parsed year is before 2020 it's wrong — force current year
+      if (d.getFullYear() < 2020) {
+        d.setFullYear(currentYear);
+        const today = new Date(); today.setHours(0,0,0,0);
+        if (d < today) d.setFullYear(currentYear + 1);
+      }
+      return d.toISOString().split("T")[0];
+    }
     return "";
   } catch { return ""; }
 }
