@@ -438,10 +438,12 @@ function renderHome(){
 }
 
 function renderResults(){
+  const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
   const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
     if(state.whoFilter!=="all"&&ev.who&&!ev.who.includes(state.whoFilter)&&!ev.who.includes("all"))return false;
+    if(!withinDays(ev.date,maxDays))return false;
     return true;
   });
   const types=["All",...new Set(state.events.map(e=>e.type))];
@@ -633,7 +635,7 @@ function bindEvents(){
   });
   // Date range on home
   document.querySelectorAll(".range-btn").forEach(el=>{
-    el.addEventListener("click",()=>setState({dateRange:el.dataset.range}));
+    el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();});
   });
   // Quick cities
   document.querySelectorAll(".quick-city").forEach(el=>{
@@ -651,10 +653,22 @@ function bindEvents(){
   if(ns)ns.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[]}));
   document.querySelectorAll(".card-row").forEach(el=>{el.addEventListener("click",()=>{const id=el.dataset.id;setState({openId:state.openId===id?null:id});});});
   document.querySelectorAll(".fav-btn").forEach(el=>{el.addEventListener("click",e=>{e.stopPropagation();const id=el.dataset.id;const f=new Set(state.favs);f.has(id)?f.delete(id):f.add(id);setState({favs:f});});});
-  document.querySelectorAll(".type-filter").forEach(el=>{el.addEventListener("click",()=>setState({typeFilter:el.dataset.type}));});
-  document.querySelectorAll(".who-filter").forEach(el=>{el.addEventListener("click",()=>setState({whoFilter:el.dataset.who}));});
-  document.querySelectorAll(".range-filter").forEach(el=>{el.addEventListener("click",()=>setState({dateRange:el.dataset.range}));});
-  document.querySelectorAll(".toggle-free").forEach(el=>{el.addEventListener("click",()=>setState({freeOnly:!state.freeOnly}));});
+  document.querySelectorAll(".type-filter").forEach(el=>{
+    el.addEventListener("click",()=>{state.typeFilter=el.dataset.type;render();});
+  });
+  document.querySelectorAll(".who-filter").forEach(el=>{
+    el.addEventListener("click",()=>{state.whoFilter=el.dataset.who;render();});
+  });
+  document.querySelectorAll(".range-filter").forEach(el=>{
+    el.addEventListener("click",()=>{
+      state.dateRange=el.dataset.range;
+      // Only re-render the results, don't reset filters or scroll
+      render();
+    });
+  });
+  document.querySelectorAll(".toggle-free").forEach(el=>{
+    el.addEventListener("click",()=>{state.freeOnly=!state.freeOnly;render();});
+  });
   document.querySelectorAll(".clear-all").forEach(el=>{el.addEventListener("click",()=>setState({typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"month"}));});
   document.querySelectorAll(".cal-btn").forEach(el=>{el.addEventListener("click",()=>{const d=(el.dataset.date||"").replace(/-/g,"");if(d)window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${el.dataset.name}&dates=${d}/${d}&location=${el.dataset.addr}`,"_blank");});});
   document.querySelectorAll(".share-btn").forEach(el=>{el.addEventListener("click",()=>{const txt=`${decodeURIComponent(el.dataset.name)} — ${el.dataset.date} at ${decodeURIComponent(el.dataset.loc)}. ${el.dataset.cost==="Free"?"Free!":""}`;if(navigator.share)navigator.share({title:decodeURIComponent(el.dataset.name),text:txt});else{navigator.clipboard?.writeText(txt);showToast("Copied!");}});});
