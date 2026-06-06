@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="apple-mobile-web-app-title" content="Dozi"/>
-<title>Dozi — Find things to do</title>
+<meta name="apple-mobile-web-app-title" content="Buzz"/>
+<title>Buzz — Stop scrolling. Start doing.</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#0a0a0f;color:#fff;min-height:100vh;}
@@ -216,26 +216,25 @@ function generateFallback(zip, regionOverride){
   const info=regionOverride||getRegionInfo(zip);
   const venues=shuffle(VENUES[info.region]||VENUES.DEFAULT);
   const city=info.city;
-  const spread=90;
   const T=[
-    {name:`${city} Farmers Market`,type:"Market",cost:"Free",who:["all","family","couple","solo"],days:Math.min(3,spread),desc:"Fresh local produce, artisan crafts, and live music every weekend.",sched:["8:00 AM · Market Opens","10:00 AM · Live Music","1:00 PM · Closes"]},
-    {name:"Craft Brewery Tour",type:"Brewery",cost:"$15",who:["solo","couple","group"],days:Math.min(8,spread),desc:"Guided tour of local craft breweries with tastings and behind-the-scenes access.",sched:["2:00 PM · Tour Starts","4:00 PM · Tasting Session","5:30 PM · Ends"]},
-    {name:`${city} Summer Festival`,type:"Festival",cost:"Free",who:["all"],days:Math.min(17,spread),desc:"The biggest community festival of the summer. Live music, food trucks, and fireworks.",sched:["10:00 AM · Opens","3:00 PM · Main Stage","9:00 PM · Fireworks"]},
-    {name:"Stand-Up Comedy Night",type:"Nightlife",cost:"$12",who:["solo","couple","group"],days:Math.min(10,spread),desc:"Local and touring comedians take the stage for a night of laughs.",sched:["7:00 PM · Doors Open","8:00 PM · Show Starts","10:00 PM · After Party"]},
-    {name:"Outdoor Movie Night",type:"Outdoor",cost:"Free",who:["all"],days:Math.min(6,spread),desc:"Free film under the stars. Food trucks on site. Bring a blanket.",sched:["6:00 PM · Food Trucks","8:00 PM · Movie Starts"]},
-    {name:"Art Gallery Opening",type:"Arts",cost:"Free",who:["solo","couple","group"],days:Math.min(12,spread),desc:"Opening night for a new local artist exhibition. Wine and light bites served.",sched:["6:00 PM · Doors Open","7:00 PM · Artist Talk","9:00 PM · Closes"]},
-    {name:"Family Carnival",type:"Carnival",cost:"Free",who:["all","family"],days:Math.min(45,spread),desc:"Rides, games, prizes, and food for the whole family.",sched:["11:00 AM · Opens","2:00 PM · Pie Eating Contest","5:00 PM · Closes"]},
-    {name:"Live Jazz Concert",type:"Music",cost:"Free",who:["all"],days:Math.min(14,spread),desc:"Free outdoor jazz every weekend this summer. Blankets welcome.",sched:["5:00 PM · Opening Act","7:00 PM · Headliner","9:00 PM · Encore"]},
-    {name:"Food Truck Rally",type:"Food",cost:"Free",who:["all"],days:Math.min(20,spread),desc:"30+ food trucks, live music, and competitions. Something for everyone.",sched:["11:00 AM · Opens","2:00 PM · Contest","6:00 PM · Closes"]},
-    {name:"5K Fun Run",type:"Sports",cost:"$25",who:["solo","couple","group","family"],days:Math.min(25,spread),desc:"Community 5K run through downtown. All fitness levels welcome.",sched:["7:00 AM · Registration","8:00 AM · Race Starts","10:00 AM · Awards"]},
-    {name:"Singles Mixer",type:"Community",cost:"$10",who:["solo"],days:Math.min(18,spread),desc:"Casual social mixer for singles. Games, drinks, and good conversation.",sched:["7:00 PM · Doors Open","7:30 PM · Icebreakers","10:00 PM · Closes"]},
-    {name:"Couples Wine Tasting",type:"Food",cost:"$35",who:["couple"],days:Math.min(22,spread),desc:"Guided wine tasting for couples with charcuterie and live acoustic music.",sched:["6:00 PM · Welcome","6:30 PM · Tasting Begins","9:00 PM · Closes"]},
-    {name:"Hiking Group Meetup",type:"Outdoor",cost:"Free",who:["solo","group"],days:Math.min(9,spread),desc:"Group hike through local trails. All skill levels. Meet new people.",sched:["8:00 AM · Meet at Trailhead","8:30 AM · Hike Starts","11:00 AM · Returns"]},
-    {name:"Cultural Heritage Festival",type:"Festival",cost:"$5",who:["all"],days:Math.min(35,spread),desc:"Food, music, and art celebrating the diversity of the community.",sched:["10:00 AM · Opens","12:00 PM · Performances","4:00 PM · Closes"]},
-    {name:"Kids STEM Expo",type:"Kids",cost:"$5",who:["family"],days:Math.min(28,spread),desc:"Robotics, science experiments, and coding workshops for kids ages 5-14.",sched:["9:00 AM · Doors Open","10:00 AM · Robotics","2:00 PM · Science Fair"]},
-    {name:"Rooftop Bar Crawl",type:"Nightlife",cost:"$20",who:["solo","group","couple"],days:Math.min(15,spread),desc:"Hit the best rooftop bars in the city with a guided group.",sched:["7:00 PM · First Stop","8:30 PM · Second Stop","10:00 PM · Final Stop"]},
-    {name:"Yoga in the Park",type:"Outdoor",cost:"Free",who:["all","solo","couple"],days:Math.min(5,spread),desc:"Free outdoor yoga class for all levels. Mats provided. Beautiful setting.",sched:["8:00 AM · Class Starts","9:30 AM · Meditation","10:00 AM · Ends"]},
-    {name:"Neighborhood Block Party",type:"Community",cost:"Free",who:["all"],days:Math.min(30,spread),desc:"Annual block party with grilling, games, and live music for all ages.",sched:["3:00 PM · Starts","6:00 PM · Live Band","8:00 PM · Closes"]},
+    {name:`${city} Farmers Market`,type:"Market",cost:"Free",who:["all","family","couple","solo"],days:3,desc:"Fresh local produce, artisan crafts, and live music every weekend.",sched:["8:00 AM · Market Opens","10:00 AM · Live Music","1:00 PM · Closes"]},
+    {name:"Craft Brewery Tour",type:"Brewery",cost:"$15",who:["solo","couple","group"],days:8,desc:"Guided tour of local craft breweries with tastings and behind-the-scenes access.",sched:["2:00 PM · Tour Starts","4:00 PM · Tasting Session","5:30 PM · Ends"]},
+    {name:`${city} Summer Festival`,type:"Festival",cost:"Free",who:["all"],days:17,desc:"The biggest community festival of the summer. Live music, food trucks, and fireworks.",sched:["10:00 AM · Opens","3:00 PM · Main Stage","9:00 PM · Fireworks"]},
+    {name:"Stand-Up Comedy Night",type:"Nightlife",cost:"$12",who:["solo","couple","group"],days:10,desc:"Local and touring comedians take the stage for a night of laughs.",sched:["7:00 PM · Doors Open","8:00 PM · Show Starts","10:00 PM · After Party"]},
+    {name:"Outdoor Movie Night",type:"Outdoor",cost:"Free",who:["all"],days:6,desc:"Free film under the stars. Food trucks on site. Bring a blanket.",sched:["6:00 PM · Food Trucks","8:00 PM · Movie Starts"]},
+    {name:"Art Gallery Opening",type:"Arts",cost:"Free",who:["solo","couple","group"],days:12,desc:"Opening night for a new local artist exhibition. Wine and light bites served.",sched:["6:00 PM · Doors Open","7:00 PM · Artist Talk","9:00 PM · Closes"]},
+    {name:"Family Carnival",type:"Carnival",cost:"Free",who:["all","family"],days:45,desc:"Rides, games, prizes, and food for the whole family.",sched:["11:00 AM · Opens","2:00 PM · Pie Eating Contest","5:00 PM · Closes"]},
+    {name:"Live Jazz Concert",type:"Music",cost:"Free",who:["all"],days:14,desc:"Free outdoor jazz every weekend this summer. Blankets welcome.",sched:["5:00 PM · Opening Act","7:00 PM · Headliner","9:00 PM · Encore"]},
+    {name:"Food Truck Rally",type:"Food",cost:"Free",who:["all"],days:20,desc:"30+ food trucks, live music, and competitions. Something for everyone.",sched:["11:00 AM · Opens","2:00 PM · Contest","6:00 PM · Closes"]},
+    {name:"5K Fun Run",type:"Sports",cost:"$25",who:["solo","couple","group","family"],days:25,desc:"Community 5K run through downtown. All fitness levels welcome.",sched:["7:00 AM · Registration","8:00 AM · Race Starts","10:00 AM · Awards"]},
+    {name:"Singles Mixer",type:"Community",cost:"$10",who:["solo"],days:18,desc:"Casual social mixer for singles. Games, drinks, and good conversation.",sched:["7:00 PM · Doors Open","7:30 PM · Icebreakers","10:00 PM · Closes"]},
+    {name:"Couples Wine Tasting",type:"Food",cost:"$35",who:["couple"],days:22,desc:"Guided wine tasting for couples with charcuterie and live acoustic music.",sched:["6:00 PM · Welcome","6:30 PM · Tasting Begins","9:00 PM · Closes"]},
+    {name:"Hiking Group Meetup",type:"Outdoor",cost:"Free",who:["solo","group"],days:9,desc:"Group hike through local trails. All skill levels. Meet new people.",sched:["8:00 AM · Meet at Trailhead","8:30 AM · Hike Starts","11:00 AM · Returns"]},
+    {name:"Cultural Heritage Festival",type:"Festival",cost:"$5",who:["all"],days:35,desc:"Food, music, and art celebrating the diversity of the community.",sched:["10:00 AM · Opens","12:00 PM · Performances","4:00 PM · Closes"]},
+    {name:"Kids STEM Expo",type:"Kids",cost:"$5",who:["family"],days:28,desc:"Robotics, science experiments, and coding workshops for kids ages 5-14.",sched:["9:00 AM · Doors Open","10:00 AM · Robotics","2:00 PM · Science Fair"]},
+    {name:"Rooftop Bar Crawl",type:"Nightlife",cost:"$20",who:["solo","group","couple"],days:15,desc:"Hit the best rooftop bars in the city with a guided group.",sched:["7:00 PM · First Stop","8:30 PM · Second Stop","10:00 PM · Final Stop"]},
+    {name:"Yoga in the Park",type:"Outdoor",cost:"Free",who:["all","solo","couple"],days:5,desc:"Free outdoor yoga class for all levels. Mats provided. Beautiful setting.",sched:["8:00 AM · Class Starts","9:30 AM · Meditation","10:00 AM · Ends"]},
+    {name:"Neighborhood Block Party",type:"Community",cost:"Free",who:["all"],days:30,desc:"Annual block party with grilling, games, and live music for all ages.",sched:["3:00 PM · Starts","6:00 PM · Live Band","8:00 PM · Closes"]},
   ];
   return T.map((t,i)=>{
     const date=addDays(t.days);
@@ -331,8 +330,8 @@ function renderHome(){
 
       <!-- Logo -->
       <div style="text-align:center;margin-bottom:32px">
-        <div style="font-size:42px;font-weight:900;color:#fff;letter-spacing:-2px;line-height:1">dozi</div>
-        <div style="color:rgba(255,255,255,0.3);font-size:13px;margin-top:6px;letter-spacing:0.5px">discover what's happening near you</div>
+        <div style="font-size:42px;font-weight:900;color:#fff;letter-spacing:-2px;line-height:1">Buzz</div>
+        <div style="color:rgba(255,255,255,0.3);font-size:13px;margin-top:6px;letter-spacing:0.5px">Stop scrolling. Start doing.</div>
       </div>
 
       <!-- GPS -->
@@ -460,6 +459,7 @@ function renderResults(){
         </div>
         ${ev.desc?`<p style="font-size:13px;color:rgba(255,255,255,0.4);line-height:1.65;margin-bottom:12px">${ev.desc}</p>`:""}
         ${ev.address?`<div style="font-size:11px;color:rgba(255,255,255,0.2);margin-bottom:12px">📍 ${ev.address}</div>`:""}
+        ${ev.source&&ev.source!=="Local"?`<div style="font-size:10px;color:rgba(255,255,255,0.12);margin-bottom:10px">Data provided by ${ev.source}</div>`:""}
         ${ev.sched&&ev.sched.length?`
           <div style="font-size:9px;color:rgba(255,255,255,0.15);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.8px">Schedule</div>
           ${ev.sched.map((s,i)=>{const p=s.split(" · ");return`<div style="display:flex;gap:12px;padding:7px 0;border-bottom:${i<ev.sched.length-1?"1px solid rgba(255,255,255,0.04)":"none"}"><span style="font-size:11px;color:${meta.color};min-width:68px;font-weight:600">${p[0]}</span><span style="font-size:11px;color:rgba(255,255,255,0.35)">${p[1]||""}</span></div>`;}).join("")}`:""}
@@ -520,6 +520,33 @@ function renderResults(){
           <p style="color:rgba(255,255,255,0.2);font-size:14px">Nothing found for your filters</p>
           <div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div>
         </div>`:cards}
+
+      <!-- Attribution Footer -->
+      <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
+        <div style="font-size:10px;color:rgba(255,255,255,0.15);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center">
+          <a href="https://developer.ticketmaster.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(0,106,255,0.08);border:1px solid rgba(0,106,255,0.15);text-decoration:none">
+            <span style="font-size:14px">🎫</span>
+            <span style="font-size:11px;font-weight:600;color:rgba(100,160,255,0.8)">Ticketmaster</span>
+          </a>
+          <a href="https://serpapi.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.15);text-decoration:none">
+            <span style="font-size:14px">🔍</span>
+            <span style="font-size:11px;font-weight:600;color:rgba(52,211,153,0.8)">SerpAPI</span>
+          </a>
+          <a href="https://rapidapi.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.15);text-decoration:none">
+            <span style="font-size:14px">⚡</span>
+            <span style="font-size:11px;font-weight:600;color:rgba(168,85,247,0.8)">RapidAPI</span>
+          </a>
+          <a href="https://unsplash.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);text-decoration:none">
+            <span style="font-size:14px">📸</span>
+            <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.4)">Unsplash</span>
+          </a>
+        </div>
+        <div style="text-align:center;margin-top:12px">
+          <span style="font-size:10px;color:rgba(255,255,255,0.1)">Event data provided by third-party sources. Buzz is not responsible for event accuracy. © 2026 Buzz</span>
+        </div>
+      </div>
+
     </div>
   </div>`;
 }
