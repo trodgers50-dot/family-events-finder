@@ -157,6 +157,19 @@ const TYPE_META={
 };
 function m(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
 
+// Sanitize text for safe insertion into HTML attributes and template literals
+function san(str){
+  if(!str) return "";
+  return String(str)
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;")
+    .replace(/`/g,"&#96;")
+    .replace(/\$/g,"&#36;");
+}
+
 // ── Who filters ───────────────────────────────────────────────────────────────
 const WHO_FILTERS=[
   {id:"all",    label:"Everyone",  icon:"👥"},
@@ -468,7 +481,7 @@ function renderResults(){
     const isFav=state.favs.has(ev.id);
     return`
     <div style="border-radius:16px;overflow:hidden;background:${isOpen?"rgba(255,255,255,0.03)":"transparent"};border:1px solid ${isOpen?"rgba(255,255,255,0.07)":"transparent"};margin-bottom:${isOpen?"8px":"0"};transition:all 0.2s">
-      ${isOpen?`<div style="position:relative;height:160px;overflow:hidden"><img src="${ev.photo}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.65"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.9) 0%,transparent 55%)"></div><div style="position:absolute;top:10px;left:12px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,0.5);color:${meta.color};font-size:11px;font-weight:700">${ev.type}</div>${ev.isWeekend?`<div style="position:absolute;top:10px;right:12px;padding:4px 10px;border-radius:999px;background:rgba(99,102,241,0.7);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
+      ${isOpen?`<div style="position:relative;height:160px;overflow:hidden"><img src="${ev.photo}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.65"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.9) 0%,transparent 55%)"></div><div style="position:absolute;top:10px;left:12px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,0.5);color:${meta.color};font-size:11px;font-weight:700">${san(ev.type)}</div>${ev.isWeekend?`<div style="position:absolute;top:10px;right:12px;padding:4px 10px;border-radius:999px;background:rgba(99,102,241,0.7);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
       <div class="card-row" data-id="${ev.id}" style="display:flex;align-items:center;gap:12px;padding:14px 2px;cursor:pointer;border-bottom:${idx<filtered.length-1&&!isOpen?"1px solid rgba(255,255,255,0.04)":"none"}">
         <div style="width:44px;height:44px;border-radius:12px;background:${meta.color}12;border:1px solid ${meta.color}20;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:${meta.color}">${meta.icon}</div>
         <div style="flex:1;min-width:0">
@@ -477,10 +490,10 @@ function renderResults(){
             ${ev.isWeekend?`<span style="font-size:9px;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px">Weekend</span>`:""}
             ${ev.cost==="Free"?`<span style="font-size:9px;font-weight:600;color:#6ee7b7;background:rgba(16,185,129,0.08);padding:1px 5px;border-radius:3px">Free</span>`:""}
           </div>
-          <div style="font-weight:600;font-size:14px;color:#f1f5f9;line-height:1.3;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.name}</div>
+          <div style="font-weight:600;font-size:14px;color:#f1f5f9;line-height:1.3;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${san(ev.name)}</div>
           <div style="display:flex;gap:8px;align-items:center">
             <span style="font-size:11px;color:${ev.date==="Today"||ev.date==="Tomorrow"?"#a5b4fc":"rgba(255,255,255,0.3)"};font-weight:${ev.date==="Today"||ev.date==="Tomorrow"?600:400}">${formatDate(ev.date)}</span>
-            <span style="font-size:11px;color:rgba(255,255,255,0.15);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${ev.location}</span>
+            <span style="font-size:11px;color:rgba(255,255,255,0.15);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${san(ev.location)}</span>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex-shrink:0">
@@ -492,15 +505,15 @@ function renderResults(){
       <div style="padding:2px 14px 16px;animation:fadeIn 0.2s ease">
         <div style="display:flex;gap:8px;margin-bottom:12px">
           ${ev.weather?`<div style="flex:1;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.05)"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Weather</div><div style="font-size:13px;font-weight:600;color:#f1f5f9">${ev.weather.i} ${ev.weather.l} · ${ev.weather.t}</div></div>`:""}
-          <div style="flex:1;background:${meta.color}08;border-radius:10px;padding:8px 12px;border:1px solid ${meta.color}15"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Cost</div><div style="font-size:13px;font-weight:700;color:${meta.color}">${ev.cost}</div></div>
+          <div style="flex:1;background:${meta.color}08;border-radius:10px;padding:8px 12px;border:1px solid ${meta.color}15"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Cost</div><div style="font-size:13px;font-weight:700;color:${meta.color}">${san(ev.cost)}</div></div>
           <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.05)"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Date</div><div style="font-size:12px;font-weight:600;color:#f1f5f9">${new Date((ev.date||"")+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div></div>
         </div>
-        ${ev.desc?`<p style="font-size:13px;color:rgba(255,255,255,0.4);line-height:1.65;margin-bottom:12px">${ev.desc}</p>`:""}
-        ${ev.address?`<div style="font-size:11px;color:rgba(255,255,255,0.2);margin-bottom:12px">📍 ${ev.address}</div>`:""}
+        ${ev.desc?`<p style="font-size:13px;color:rgba(255,255,255,0.4);line-height:1.65;margin-bottom:12px">${san(ev.desc)}</p>`:""}
+        ${ev.address?`<div style="font-size:11px;color:rgba(255,255,255,0.2);margin-bottom:12px">📍 ${san(ev.address)}</div>`:""}
         ${ev.source&&ev.source!=="Local"?`<div style="font-size:10px;color:rgba(255,255,255,0.12);margin-bottom:10px">Data provided by ${ev.source}</div>`:""}
         ${ev.sched&&ev.sched.length?`
           <div style="font-size:9px;color:rgba(255,255,255,0.15);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.8px">Schedule</div>
-          ${ev.sched.map((s,i)=>{const p=s.split(" · ");return`<div style="display:flex;gap:12px;padding:7px 0;border-bottom:${i<ev.sched.length-1?"1px solid rgba(255,255,255,0.04)":"none"}"><span style="font-size:11px;color:${meta.color};min-width:68px;font-weight:600">${p[0]}</span><span style="font-size:11px;color:rgba(255,255,255,0.35)">${p[1]||""}</span></div>`;}).join("")}`:""}
+          ${ev.sched.map((s,i)=>{const p=s.split(" · ");return`<div style="display:flex;gap:12px;padding:7px 0;border-bottom:${i<ev.sched.length-1?"1px solid rgba(255,255,255,0.04)":"none"}"><span style="font-size:11px;color:${meta.color};min-width:68px;font-weight:600">${p[0]}</span><span style="font-size:11px;color:rgba(255,255,255,0.35)">${san(p[1]||"")}</span></div>`;}).join("")}`:""}
         <div style="display:flex;gap:8px;margin-top:14px">
           <div class="cal-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${ev.date||""}" data-addr="${encodeURIComponent(ev.address||ev.location)}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">📅 Calendar</div>
           ${ev.url?`<a href="${ev.url}" target="_blank" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20;text-decoration:none">🎟 Tickets</a>`:`<div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20">Share ↗</div>`}
