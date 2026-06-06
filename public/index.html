@@ -11,7 +11,7 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#0a0a0f;color:#fff;min-height:100vh;}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
 </style>
 </head>
 <body>
@@ -278,7 +278,7 @@ let state={
   screen:"home",searchInput:"",zip:"",events:[],info:null,
   openId:null,typeFilter:"All",whoFilter:"all",dateRange:"month",
   freeOnly:false,favs:new Set(),toast:"",gpsLoading:false,
-  loading:false,liveData:false,suggestions:[],searchError:"",
+  loading:false,liveLoading:false,liveData:false,suggestions:[],searchError:"",
 };
 function setState(u){Object.assign(state,u);render();}
 function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}),2500);}
@@ -289,13 +289,45 @@ async function doSearch(input, regionOverride){
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
-  setState({loading:true,screen:"results",events:[],openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,liveData:false,info,zip,searchError:""});
-  const live=await fetchLiveEvents(zip);
-  if(live&&live.length>0){
-    setState({events:live,loading:false,liveData:true});
-    showToast(`✓ ${live.length} live events loaded`);
-  }else{
-    setState({events:generateFallback(zip,info),loading:false,liveData:false});
+
+  // Phase 1 — show generated events instantly
+  const fallback=generateFallback(zip,info);
+  setState({
+    loading:false, liveLoading:true, screen:"results",
+    events:fallback, openId:null, typeFilter:"All",
+    whoFilter:"all", freeOnly:false, liveData:false,
+    info, zip, searchError:""
+  });
+
+  // Phase 2 — fetch live events in background, merge when ready
+  try {
+    const res = await fetch(`${PROXY_URL}?zip=${zip}`);
+    if(!res.ok) throw new Error("API error");
+    const data = await res.json();
+    if(data.events && data.events.length > 0){
+      const liveEvents = data.events.map(ev=>({
+        ...ev,
+        emoji: TYPE_ICONS[ev.type]||"●",
+        photo: getPhoto(ev.type, ev.id),
+        weather: getWeather(ev.startDate, getRegionInfo(zip).region),
+        isWeekend: isThisWeekend(ev.startDate),
+        date: ev.startDate,
+        sched: ev.subEvents?.map(s=>`${s.time} · ${s.name}`)||[],
+        rating: ev.familyRating||4,
+        who: ["all"],
+      }));
+      // Merge live events with fallback — live events first, then any fallback not duplicated
+      const liveNames = new Set(liveEvents.map(e=>e.name.toLowerCase().slice(0,15)));
+      const uniqueFallback = fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
+      const merged = [...liveEvents, ...uniqueFallback];
+      setState({events:merged, liveLoading:false, liveData:true});
+      showToast(`✓ ${liveEvents.length} live events added`);
+    } else {
+      setState({liveLoading:false, liveData:false});
+    }
+  } catch(e) {
+    console.log("Live fetch failed:", e.message);
+    setState({liveLoading:false, liveData:false});
   }
 }
 
