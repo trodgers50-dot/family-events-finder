@@ -70,7 +70,15 @@ export default async function handler(req, res) {
 
 // ── Ticketmaster ──────────────────────────────────────────────────────────────
 async function fetchTicketmaster(zip) {
-  const url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_KEY}&postalCode=${zip}&countryCode=US&radius=50&unit=miles&size=25&sort=date,asc`;
+  const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
+  const isVB = VB_ZIPS.includes(zip);
+
+  // For Virginia Beach use lat/lng + wider radius to catch all Hampton Roads concerts
+  const locationParam = isVB
+    ? `latlong=36.8529,-76.0&radius=60`
+    : `postalCode=${zip}&radius=75`;
+
+  const url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_KEY}&${locationParam}&unit=miles&countryCode=US&size=25&sort=date,asc`;
   const r = await fetch(url);
   const d = await r.json();
   if (d.fault) throw new Error(d.fault.faultstring);
@@ -96,7 +104,9 @@ async function fetchTicketmaster(zip) {
       address: [venue?.address?.line1, venue?.city?.name, venue?.state?.stateCode].filter(Boolean).join(", "),
       description: tm.info || tm.pleaseNote || "",
       familyRating: 4,
-      cost: tm.priceRanges ? `$${Math.round(tm.priceRanges[0].min)}+` : "See site",
+      cost: tm.priceRanges 
+        ? (tm.priceRanges[0].min === 0 ? "Free" : `$${Math.round(tm.priceRanges[0].min)}+`)
+        : "See site",
       url: tm.url,
       source: "Ticketmaster",
       subEvents: (tm._embedded?.attractions || []).slice(0, 3).map(a => ({
@@ -125,7 +135,7 @@ async function fetchSerpAPI(cityName, zip) {
     address: ev.address?.join(", ") || cityName,
     description: ev.description || "",
     familyRating: 4,
-    cost: ev.ticket_info?.[0]?.price || "Free",
+    cost: ev.ticket_info?.[0]?.price || "See site",
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
@@ -154,7 +164,7 @@ async function fetchRapidAPI(cityName, zip) {
     address: ev.venue?.full_address || ev.location?.address || cityName,
     description: ev.description || "",
     familyRating: 4,
-    cost: ev.is_free ? "Free" : ev.ticket_links?.[0]?.price || "See site",
+    cost: ev.is_free === true ? "Free" : ev.ticket_links?.[0]?.price || "See site",
     url: ev.link || ev.ticket_links?.[0]?.link || "",
     source: "RapidAPI Events",
     subEvents: [],
