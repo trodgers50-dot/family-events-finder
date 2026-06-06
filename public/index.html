@@ -276,7 +276,7 @@ async function fetchLiveEvents(zip){
 // ── State ─────────────────────────────────────────────────────────────────────
 let state={
   screen:"home",searchInput:"",zip:"",events:[],info:null,
-  openId:null,typeFilter:"All",whoFilter:"all",dateRange:"month",
+  openId:null,typeFilter:"All",whoFilter:"all",dateRange:"3months",
   freeOnly:false,favs:new Set(),toast:"",gpsLoading:false,
   loading:false,liveLoading:false,liveData:false,suggestions:[],searchError:"",
 };
@@ -439,6 +439,8 @@ function renderHome(){
 
 function renderResults(){
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
+  // Debug: log current filter state
+  // console.log("Filtering:", state.dateRange, "maxDays:", maxDays, "events:", state.events.length);
   const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
@@ -669,7 +671,7 @@ function bindEvents(){
   document.querySelectorAll(".toggle-free").forEach(el=>{
     el.addEventListener("click",()=>{state.freeOnly=!state.freeOnly;render();});
   });
-  document.querySelectorAll(".clear-all").forEach(el=>{el.addEventListener("click",()=>setState({typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"month"}));});
+  document.querySelectorAll(".clear-all").forEach(el=>{el.addEventListener("click",()=>state.typeFilter="All";state.whoFilter="all";state.freeOnly=false;state.dateRange="3months";render(););});
   document.querySelectorAll(".cal-btn").forEach(el=>{el.addEventListener("click",()=>{const d=(el.dataset.date||"").replace(/-/g,"");if(d)window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${el.dataset.name}&dates=${d}/${d}&location=${el.dataset.addr}`,"_blank");});});
   document.querySelectorAll(".share-btn").forEach(el=>{el.addEventListener("click",()=>{const txt=`${decodeURIComponent(el.dataset.name)} — ${el.dataset.date} at ${decodeURIComponent(el.dataset.loc)}. ${el.dataset.cost==="Free"?"Free!":""}`;if(navigator.share)navigator.share({title:decodeURIComponent(el.dataset.name),text:txt});else{navigator.clipboard?.writeText(txt);showToast("Copied!");}});});
 }
