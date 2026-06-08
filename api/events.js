@@ -94,10 +94,18 @@ async function fetchTicketmaster(zip) {
       : seg === "Arts & Theatre" ? "Arts"
       : genre === "Family" || subGenre === "Family" ? "Family"
       : classifyByTitle(tm.name);
+    // Get best available image from Ticketmaster
+    const images = tm.images || [];
+    const tmImage = images.find(img => img.ratio === "16_9" && img.width >= 640)?.url
+      || images.find(img => img.ratio === "16_9")?.url
+      || images.find(img => img.width >= 640)?.url
+      || images[0]?.url
+      || null;
     return {
       id: "tm_" + tm.id,
       name: tm.name,
       type: tmType,
+      image: tmImage,
       startDate: date,
       endDate: date,
       location: venue?.name || "See event page",
