@@ -495,6 +495,7 @@ function renderResults(){
             <span style="font-size:11px;color:${ev.date==="Today"||ev.date==="Tomorrow"?"#a5b4fc":"rgba(255,255,255,0.3)"};font-weight:${ev.date==="Today"||ev.date==="Tomorrow"?600:400}">${formatDate(ev.date)}</span>
             <span style="font-size:11px;color:rgba(255,255,255,0.15);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${san(ev.location)}</span>
           </div>
+          ${ev.address&&ev.address!==ev.location?`<div style="font-size:10px;color:rgba(255,255,255,0.12);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${san(ev.address)}</div>`:""}
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;gap:7px;flex-shrink:0">
           <div class="fav-btn" data-id="${ev.id}" style="font-size:15px;cursor:pointer;opacity:${isFav?1:0.2};color:${isFav?"#fbbf24":"#fff"}">${isFav?"★":"☆"}</div>
@@ -509,7 +510,7 @@ function renderResults(){
           <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.05)"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Date</div><div style="font-size:12px;font-weight:600;color:#f1f5f9">${new Date((ev.date||"")+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div></div>
         </div>
         ${ev.desc?`<p style="font-size:13px;color:rgba(255,255,255,0.4);line-height:1.65;margin-bottom:12px">${san(ev.desc)}</p>`:""}
-        ${ev.address?`<div style="font-size:11px;color:rgba(255,255,255,0.2);margin-bottom:12px">📍 ${san(ev.address)}</div>`:""}
+        ${ev.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.address)}" target="_blank" style="display:block;font-size:11px;color:rgba(99,162,255,0.6);margin-bottom:12px;text-decoration:none">📍 ${san(ev.address)} <span style="font-size:10px;opacity:0.6">↗ Maps</span></a>`:""}
         ${ev.source&&ev.source!=="Local"?`<div style="font-size:10px;color:rgba(255,255,255,0.12);margin-bottom:10px">Data provided by ${ev.source}</div>`:""}
         ${ev.sched&&ev.sched.length?`
           <div style="font-size:9px;color:rgba(255,255,255,0.15);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.8px">Schedule</div>
