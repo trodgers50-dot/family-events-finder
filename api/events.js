@@ -19,10 +19,14 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const { zip } = req.query;
+  const { zip, lat, lng } = req.query;
   if (!zip || zip.length !== 5) {
     return res.status(400).json({ error: "Valid 5-digit ZIP required" });
   }
+
+  const userLat = lat ? parseFloat(lat) : null;
+  const userLng = lng ? parseFloat(lng) : null;
+  const hasCoords = userLat && userLng;
 
   const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB = VB_ZIPS.includes(zip);
@@ -48,9 +52,9 @@ export default async function handler(req, res) {
   const stateName = stateMap[prefix2] || stateMap[prefix3] || "";
 
   const [tmRes, serpRes, rapidRes, vbRes] = await Promise.allSettled([
-    fetchWithTimeout(fetchTicketmaster(zip), 3000),
-    fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName), 3000),
-    fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName), 3000),
+    fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
     isVB ? fetchWithTimeout(fetchVirginiaBeach(), 3000) : Promise.resolve([]),
   ]);
 
@@ -75,25 +79,55 @@ export default async function handler(req, res) {
     return true;
   });
 
-  // Sort by date
-  results.events.sort((a, b) => {
-    if (!a.startDate) return 1;
-    if (!b.startDate) return -1;
-    return a.startDate.localeCompare(b.startDate);
-  });
+  // Add distance to each event if we have user coords
+  if (hasCoords) {
+    results.events = results.events.map(ev => ({
+      ...ev,
+      distanceMiles: ev.lat && ev.lng
+        ? calcDistance(userLat, userLng, ev.lat, ev.lng)
+        : null
+    }));
+
+    // Sort by distance band first, then date
+    results.events.sort((a, b) => {
+      const distA = a.distanceMiles ?? 999;
+      const distB = b.distanceMiles ?? 999;
+      // Group into bands: 0-10mi, 10-25mi, 25-50mi, 50+mi
+      const bandA = distA < 10 ? 0 : distA < 25 ? 1 : distA < 50 ? 2 : 3;
+      const bandB = distB < 10 ? 0 : distB < 25 ? 1 : distB < 50 ? 2 : 3;
+      if (bandA !== bandB) return bandA - bandB;
+      // Within same band, sort by date
+      if (!a.startDate) return 1;
+      if (!b.startDate) return -1;
+      return a.startDate.localeCompare(b.startDate);
+    });
+  } else {
+    // No coords - sort by date only
+    results.events.sort((a, b) => {
+      if (!a.startDate) return 1;
+      if (!b.startDate) return -1;
+      return a.startDate.localeCompare(b.startDate);
+    });
+  }
 
   return res.status(200).json(results);
 }
 
 // ── Ticketmaster ──────────────────────────────────────────────────────────────
-async function fetchTicketmaster(zip) {
-  const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
-  const isVB = VB_ZIPS.includes(zip);
+async function fetchTicketmaster(zip, userLat, userLng) {
+  const hasCoords = userLat && userLng;
+  const VB_ZIPS_TM = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
+  const isVB_TM = VB_ZIPS_TM.includes(zip);
 
-  // For Virginia Beach use lat/lng + wider radius to catch all Hampton Roads concerts
-  const locationParam = isVB
-    ? `latlong=36.8529,-76.0&radius=60`
-    : `postalCode=${zip}&radius=75`;
+  // Use actual GPS coordinates when available for more accurate results
+  let locationParam;
+  if (hasCoords) {
+    locationParam = `latlong=${userLat},${userLng}&radius=50`;
+  } else if (isVB_TM) {
+    locationParam = `latlong=36.8529,-76.0&radius=60`;
+  } else {
+    locationParam = `postalCode=${zip}&radius=50`;
+  }
 
   const url = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_KEY}&${locationParam}&unit=miles&countryCode=US&size=25&sort=date,asc`;
   const r = await fetch(url);
@@ -144,11 +178,12 @@ async function fetchTicketmaster(zip) {
 }
 
 // ── SerpAPI ───────────────────────────────────────────────────────────────────
-async function fetchSerpAPI(cityName, zip, stateName) {
-  // Include state in query to avoid city name ambiguity (e.g. Franklin PA vs Franklin TN)
+async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
-  const query = encodeURIComponent(`events in ${location} this month`);
-  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us`;
+  const query = encodeURIComponent(`events near ${location} this month`);
+  // Use GPS coordinates for more precise local results
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=50` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
@@ -170,9 +205,9 @@ async function fetchSerpAPI(cityName, zip, stateName) {
 }
 
 // ── RapidAPI ──────────────────────────────────────────────────────────────────
-async function fetchRapidAPI(cityName, zip, stateName) {
+async function fetchRapidAPI(cityName, zip, stateName, lat, lng) {
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
-  const query = encodeURIComponent(`things to do in ${location}`);
+  const query = encodeURIComponent(`things to do near ${location}`);
   const url = `https://real-time-events-search.p.rapidapi.com/search-events?query=${query}&date=any&is_virtual=false&start=0`;
   const r = await fetch(url, {
     headers: {
@@ -225,6 +260,16 @@ async function fetchVirginiaBeach() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function calcDistance(lat1, lon1, lat2, lon2) {
+  const R = 3959; // miles
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLon = (lon2-lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+    Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 function parseDate(str) {
   if (!str) return "";
   try {
