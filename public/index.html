@@ -538,6 +538,11 @@ function generateFallback(zip, regionOverride){
       rating:4,weather:getWeather(date,info.region||"DEFAULT"),
       isWeekend:isThisWeekend(date),sched:t.sched,source:"Local",
     };
+  }).sort((a,b)=>{
+    if(!a.date&&!b.date)return 0;
+    if(!a.date)return 1;
+    if(!b.date)return -1;
+    return a.date.localeCompare(b.date);
   });
 }
 
@@ -612,6 +617,13 @@ async function doSearch(input, regionOverride){
       const liveNames = new Set(liveEvents.map(e=>e.name.toLowerCase().slice(0,15)));
       const uniqueFallback = fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
       const merged = [...liveEvents, ...uniqueFallback];
+      // Sort all events chronologically
+      merged.sort((a,b)=>{
+        if(!a.date&&!b.date)return 0;
+        if(!a.date)return 1;
+        if(!b.date)return -1;
+        return a.date.localeCompare(b.date);
+      });
       setState({events:merged, liveLoading:false, liveData:true});
       showToast(`✓ ${liveEvents.length} live events added`);
     } else {
