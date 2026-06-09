@@ -675,6 +675,7 @@ let state={
   freeOnly:false,favs:new Set(),toast:"",gpsLoading:false,
   loading:false,liveLoading:false,liveData:false,suggestions:[],searchError:"",
   reviews:{}, reviewInput:{}, reviewLoading:{},
+  userLat:null, userLng:null,
 };
 function setState(u){Object.assign(state,u);render();}
 function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}),2500);}
@@ -697,7 +698,8 @@ async function doSearch(input, regionOverride){
 
   // Phase 2 — fetch live events in background, merge when ready
   try {
-    const res = await fetch(`${PROXY_URL}?zip=${zip}`);
+    const coordParams = state.userLat && state.userLng ? `&lat=${state.userLat}&lng=${state.userLng}` : "";
+    const res = await fetch(`${PROXY_URL}?zip=${zip}${coordParams}`);
     if(!res.ok) throw new Error("API error");
     const data = await res.json();
     if(data.events && data.events.length > 0){
@@ -740,6 +742,8 @@ function detectLocation(){
   navigator.geolocation.getCurrentPosition(pos=>{
     const{latitude:lat,longitude:lng}=pos.coords;
     const r=latLngToRegion(lat,lng);
+    state.userLat=lat;
+    state.userLng=lng;
     setState({gpsLoading:false,searchInput:r.city});
     doSearch(r.city,r);
     showToast(`📍 Found you in ${r.city}`);
@@ -890,6 +894,7 @@ function renderResults(){
           <div style="display:flex;gap:8px;align-items:center">
             <span style="font-size:11px;color:${ev.date==="Today"||ev.date==="Tomorrow"?"#a5b4fc":"rgba(255,255,255,0.3)"};font-weight:${ev.date==="Today"||ev.date==="Tomorrow"?600:400}">${formatDate(ev.date)}</span>
             <span style="font-size:11px;color:rgba(255,255,255,0.15);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${san(ev.location)}</span>
+            ${ev.distanceMiles!=null?`<span style="font-size:10px;color:rgba(99,162,255,0.5);flex-shrink:0">${ev.distanceMiles<1?"<1":Math.round(ev.distanceMiles)}mi</span>`:""}
           </div>
           ${ev.address&&ev.address!==ev.location?`<div style="font-size:10px;color:rgba(255,255,255,0.12);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📍 ${san(ev.address)}</div>`:""}
         </div>
