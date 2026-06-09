@@ -61,48 +61,287 @@ async function fetchReviews(eventId) {
 
 // ── City lookup ───────────────────────────────────────────────────────────────
 const CITY_ZIP = {
-  "virginia beach":  {zip:"23464",city:"Virginia Beach",state:"VA",region:"VA"},
-  "vb":              {zip:"23464",city:"Virginia Beach",state:"VA",region:"VA"},
-  "norfolk":         {zip:"23510",city:"Norfolk",state:"VA",region:"VA"},
-  "chesapeake":      {zip:"23320",city:"Chesapeake",state:"VA",region:"VA"},
-  "richmond":        {zip:"23220",city:"Richmond",state:"VA",region:"VA"},
-  "new york":        {zip:"10001",city:"New York",state:"NY",region:"NY"},
-  "nyc":             {zip:"10001",city:"New York",state:"NY",region:"NY"},
-  "los angeles":     {zip:"90001",city:"Los Angeles",state:"CA",region:"CA"},
-  "la":              {zip:"90001",city:"Los Angeles",state:"CA",region:"CA"},
-  "chicago":         {zip:"60601",city:"Chicago",state:"IL",region:"IL"},
-  "houston":         {zip:"77001",city:"Houston",state:"TX",region:"TX"},
-  "miami":           {zip:"33101",city:"Miami",state:"FL",region:"FL"},
-  "atlanta":         {zip:"30301",city:"Atlanta",state:"GA",region:"GA"},
-  "seattle":         {zip:"98101",city:"Seattle",state:"WA",region:"WA"},
-  "denver":          {zip:"80201",city:"Denver",state:"CO",region:"CO"},
-  "phoenix":         {zip:"85001",city:"Phoenix",state:"AZ",region:"AZ"},
-  "nashville":       {zip:"37201",city:"Nashville",state:"TN",region:"TN"},
-  "new orleans":     {zip:"70112",city:"New Orleans",state:"LA",region:"LA"},
-  "charlotte":       {zip:"28201",city:"Charlotte",state:"NC",region:"NC"},
-  "san antonio":     {zip:"78201",city:"San Antonio",state:"TX",region:"TX"},
-  "san francisco":   {zip:"94102",city:"San Francisco",state:"CA",region:"CA"},
-  "sf":              {zip:"94102",city:"San Francisco",state:"CA",region:"CA"},
-  "boston":          {zip:"02101",city:"Boston",state:"MA",region:"MA"},
-  "philadelphia":    {zip:"19101",city:"Philadelphia",state:"PA",region:"PA"},
-  "philly":          {zip:"19101",city:"Philadelphia",state:"PA",region:"PA"},
-  "dallas":          {zip:"75201",city:"Dallas",state:"TX",region:"TX"},
-  "austin":          {zip:"78701",city:"Austin",state:"TX",region:"TX"},
-  "portland":        {zip:"97201",city:"Portland",state:"OR",region:"OR"},
-  "las vegas":       {zip:"89101",city:"Las Vegas",state:"NV",region:"NV"},
-  "minneapolis":     {zip:"55401",city:"Minneapolis",state:"MN",region:"MN"},
-  "detroit":         {zip:"48201",city:"Detroit",state:"MI",region:"MI"},
-  "baltimore":       {zip:"21201",city:"Baltimore",state:"MD",region:"MD"},
-  "tampa":           {zip:"33601",city:"Tampa",state:"FL",region:"FL"},
-  "orlando":         {zip:"32801",city:"Orlando",state:"FL",region:"FL"},
-  "san diego":       {zip:"92101",city:"San Diego",state:"CA",region:"CA"},
-  "kansas city":     {zip:"64101",city:"Kansas City",state:"MO",region:"MO"},
-  "columbus":        {zip:"43201",city:"Columbus",state:"OH",region:"OH"},
-  "memphis":         {zip:"38101",city:"Memphis",state:"TN",region:"TN"},
-  "raleigh":         {zip:"27601",city:"Raleigh",state:"NC",region:"NC"},
-  "salt lake city":  {zip:"84101",city:"Salt Lake City",state:"UT",region:"UT"},
-  "milwaukee":       {zip:"53201",city:"Milwaukee",state:"WI",region:"WI"},
-  "jacksonville":    {zip:"32201",city:"Jacksonville",state:"FL",region:"FL"},
+  // Virginia
+  "virginia beach":{zip:"23462",city:"Virginia Beach",state:"VA",region:"VA"},
+  "vb":{zip:"23462",city:"Virginia Beach",state:"VA",region:"VA"},
+  "norfolk":{zip:"23510",city:"Norfolk",state:"VA",region:"VA"},
+  "chesapeake":{zip:"23320",city:"Chesapeake",state:"VA",region:"VA"},
+  "richmond":{zip:"23220",city:"Richmond",state:"VA",region:"VA"},
+  "roanoke":{zip:"24011",city:"Roanoke",state:"VA",region:"DEFAULT"},
+  "arlington":{zip:"22201",city:"Arlington",state:"VA",region:"DEFAULT"},
+  "alexandria":{zip:"22301",city:"Alexandria",state:"VA",region:"DEFAULT"},
+  // New York
+  "new york":{zip:"10001",city:"New York",state:"NY",region:"NY"},
+  "nyc":{zip:"10001",city:"New York",state:"NY",region:"NY"},
+  "manhattan":{zip:"10001",city:"Manhattan",state:"NY",region:"NY"},
+  "brooklyn":{zip:"11201",city:"Brooklyn",state:"NY",region:"NY"},
+  "bronx":{zip:"10451",city:"Bronx",state:"NY",region:"NY"},
+  "queens":{zip:"11101",city:"Queens",state:"NY",region:"NY"},
+  "staten island":{zip:"10301",city:"Staten Island",state:"NY",region:"NY"},
+  "buffalo":{zip:"14201",city:"Buffalo",state:"NY",region:"DEFAULT"},
+  "rochester":{zip:"14601",city:"Rochester",state:"NY",region:"DEFAULT"},
+  "albany":{zip:"12201",city:"Albany",state:"NY",region:"DEFAULT"},
+  "syracuse":{zip:"13201",city:"Syracuse",state:"NY",region:"DEFAULT"},
+  // California
+  "los angeles":{zip:"90001",city:"Los Angeles",state:"CA",region:"CA"},
+  "la":{zip:"90001",city:"Los Angeles",state:"CA",region:"CA"},
+  "san francisco":{zip:"94102",city:"San Francisco",state:"CA",region:"CA"},
+  "sf":{zip:"94102",city:"San Francisco",state:"CA",region:"CA"},
+  "san diego":{zip:"92101",city:"San Diego",state:"CA",region:"CA"},
+  "san jose":{zip:"95101",city:"San Jose",state:"CA",region:"DEFAULT"},
+  "sacramento":{zip:"95814",city:"Sacramento",state:"CA",region:"DEFAULT"},
+  "fresno":{zip:"93701",city:"Fresno",state:"CA",region:"DEFAULT"},
+  "long beach":{zip:"90801",city:"Long Beach",state:"CA",region:"CA"},
+  "oakland":{zip:"94601",city:"Oakland",state:"CA",region:"CA"},
+  "anaheim":{zip:"92801",city:"Anaheim",state:"CA",region:"DEFAULT"},
+  "santa ana":{zip:"92701",city:"Santa Ana",state:"CA",region:"DEFAULT"},
+  "riverside":{zip:"92501",city:"Riverside",state:"CA",region:"DEFAULT"},
+  "bakersfield":{zip:"93301",city:"Bakersfield",state:"CA",region:"DEFAULT"},
+  "irvine":{zip:"92601",city:"Irvine",state:"CA",region:"DEFAULT"},
+  "beverly hills":{zip:"90210",city:"Beverly Hills",state:"CA",region:"CA"},
+  "santa monica":{zip:"90401",city:"Santa Monica",state:"CA",region:"CA"},
+  "pasadena":{zip:"91101",city:"Pasadena",state:"CA",region:"DEFAULT"},
+  // Texas
+  "houston":{zip:"77001",city:"Houston",state:"TX",region:"TX"},
+  "dallas":{zip:"75201",city:"Dallas",state:"TX",region:"TX"},
+  "austin":{zip:"78701",city:"Austin",state:"TX",region:"TX"},
+  "san antonio":{zip:"78201",city:"San Antonio",state:"TX",region:"TX"},
+  "fort worth":{zip:"76101",city:"Fort Worth",state:"TX",region:"TX"},
+  "el paso":{zip:"79901",city:"El Paso",state:"TX",region:"DEFAULT"},
+  "arlington tx":{zip:"76001",city:"Arlington",state:"TX",region:"TX"},
+  "corpus christi":{zip:"78401",city:"Corpus Christi",state:"TX",region:"DEFAULT"},
+  "plano":{zip:"75023",city:"Plano",state:"TX",region:"TX"},
+  "lubbock":{zip:"79401",city:"Lubbock",state:"TX",region:"DEFAULT"},
+  "laredo":{zip:"78041",city:"Laredo",state:"TX",region:"DEFAULT"},
+  "irving":{zip:"75061",city:"Irving",state:"TX",region:"TX"},
+  "waco":{zip:"76701",city:"Waco",state:"TX",region:"DEFAULT"},
+  "amarillo":{zip:"79101",city:"Amarillo",state:"TX",region:"DEFAULT"},
+  "garland":{zip:"75040",city:"Garland",state:"TX",region:"TX"},
+  // Florida
+  "miami":{zip:"33101",city:"Miami",state:"FL",region:"FL"},
+  "orlando":{zip:"32801",city:"Orlando",state:"FL",region:"FL"},
+  "tampa":{zip:"33601",city:"Tampa",state:"FL",region:"FL"},
+  "jacksonville":{zip:"32201",city:"Jacksonville",state:"FL",region:"FL"},
+  "st petersburg":{zip:"33701",city:"St. Petersburg",state:"FL",region:"FL"},
+  "hialeah":{zip:"33010",city:"Hialeah",state:"FL",region:"FL"},
+  "tallahassee":{zip:"32301",city:"Tallahassee",state:"FL",region:"DEFAULT"},
+  "fort lauderdale":{zip:"33301",city:"Fort Lauderdale",state:"FL",region:"FL"},
+  "fort myers":{zip:"33901",city:"Fort Myers",state:"FL",region:"DEFAULT"},
+  "gainesville":{zip:"32601",city:"Gainesville",state:"FL",region:"DEFAULT"},
+  "sarasota":{zip:"34230",city:"Sarasota",state:"FL",region:"DEFAULT"},
+  "pensacola":{zip:"32501",city:"Pensacola",state:"FL",region:"DEFAULT"},
+  "daytona beach":{zip:"32114",city:"Daytona Beach",state:"FL",region:"DEFAULT"},
+  "boca raton":{zip:"33427",city:"Boca Raton",state:"FL",region:"DEFAULT"},
+  "west palm beach":{zip:"33401",city:"West Palm Beach",state:"FL",region:"DEFAULT"},
+  "clearwater":{zip:"33755",city:"Clearwater",state:"FL",region:"FL"},
+  "miami beach":{zip:"33139",city:"Miami Beach",state:"FL",region:"FL"},
+  // Illinois
+  "chicago":{zip:"60601",city:"Chicago",state:"IL",region:"IL"},
+  "aurora":{zip:"60505",city:"Aurora",state:"IL",region:"IL"},
+  "naperville":{zip:"60540",city:"Naperville",state:"IL",region:"IL"},
+  "rockford":{zip:"61101",city:"Rockford",state:"IL",region:"DEFAULT"},
+  "joliet":{zip:"60431",city:"Joliet",state:"IL",region:"IL"},
+  "springfield il":{zip:"62701",city:"Springfield",state:"IL",region:"DEFAULT"},
+  "peoria":{zip:"61602",city:"Peoria",state:"IL",region:"DEFAULT"},
+  // Pennsylvania
+  "philadelphia":{zip:"19101",city:"Philadelphia",state:"PA",region:"DEFAULT"},
+  "philly":{zip:"19101",city:"Philadelphia",state:"PA",region:"DEFAULT"},
+  "pittsburgh":{zip:"15201",city:"Pittsburgh",state:"PA",region:"DEFAULT"},
+  "allentown":{zip:"18101",city:"Allentown",state:"PA",region:"DEFAULT"},
+  "erie":{zip:"16501",city:"Erie",state:"PA",region:"DEFAULT"},
+  "reading":{zip:"19601",city:"Reading",state:"PA",region:"DEFAULT"},
+  "scranton":{zip:"18503",city:"Scranton",state:"PA",region:"DEFAULT"},
+  "harrisburg":{zip:"17101",city:"Harrisburg",state:"PA",region:"DEFAULT"},
+  "franklin pa":{zip:"16323",city:"Franklin",state:"PA",region:"DEFAULT"},
+  "franklin":{zip:"16323",city:"Franklin",state:"PA",region:"DEFAULT"},
+  "oil city":{zip:"16301",city:"Oil City",state:"PA",region:"DEFAULT"},
+  "meadville":{zip:"16335",city:"Meadville",state:"PA",region:"DEFAULT"},
+  "warren pa":{zip:"16365",city:"Warren",state:"PA",region:"DEFAULT"},
+  // Georgia
+  "atlanta":{zip:"30301",city:"Atlanta",state:"GA",region:"GA"},
+  "savannah":{zip:"31401",city:"Savannah",state:"GA",region:"DEFAULT"},
+  "augusta":{zip:"30901",city:"Augusta",state:"GA",region:"DEFAULT"},
+  "columbus ga":{zip:"31901",city:"Columbus",state:"GA",region:"DEFAULT"},
+  "macon":{zip:"31201",city:"Macon",state:"GA",region:"DEFAULT"},
+  // Washington State
+  "seattle":{zip:"98101",city:"Seattle",state:"WA",region:"WA"},
+  "spokane":{zip:"99201",city:"Spokane",state:"WA",region:"DEFAULT"},
+  "tacoma":{zip:"98401",city:"Tacoma",state:"WA",region:"WA"},
+  "bellevue":{zip:"98004",city:"Bellevue",state:"WA",region:"WA"},
+  "olympia":{zip:"98501",city:"Olympia",state:"WA",region:"DEFAULT"},
+  // Colorado
+  "denver":{zip:"80201",city:"Denver",state:"CO",region:"CO"},
+  "colorado springs":{zip:"80901",city:"Colorado Springs",state:"CO",region:"DEFAULT"},
+  "aurora co":{zip:"80010",city:"Aurora",state:"CO",region:"CO"},
+  "boulder":{zip:"80301",city:"Boulder",state:"CO",region:"CO"},
+  "fort collins":{zip:"80521",city:"Fort Collins",state:"CO",region:"DEFAULT"},
+  // Arizona
+  "phoenix":{zip:"85001",city:"Phoenix",state:"AZ",region:"AZ"},
+  "tucson":{zip:"85701",city:"Tucson",state:"AZ",region:"DEFAULT"},
+  "scottsdale":{zip:"85251",city:"Scottsdale",state:"AZ",region:"AZ"},
+  "mesa":{zip:"85201",city:"Mesa",state:"AZ",region:"AZ"},
+  "chandler":{zip:"85224",city:"Chandler",state:"AZ",region:"AZ"},
+  "tempe":{zip:"85281",city:"Tempe",state:"AZ",region:"AZ"},
+  "glendale az":{zip:"85301",city:"Glendale",state:"AZ",region:"AZ"},
+  // Tennessee
+  "nashville":{zip:"37201",city:"Nashville",state:"TN",region:"TN"},
+  "memphis":{zip:"38101",city:"Memphis",state:"TN",region:"TN"},
+  "knoxville":{zip:"37901",city:"Knoxville",state:"TN",region:"DEFAULT"},
+  "chattanooga":{zip:"37401",city:"Chattanooga",state:"TN",region:"DEFAULT"},
+  "clarksville":{zip:"37040",city:"Clarksville",state:"TN",region:"DEFAULT"},
+  // North Carolina
+  "charlotte":{zip:"28201",city:"Charlotte",state:"NC",region:"NC"},
+  "raleigh":{zip:"27601",city:"Raleigh",state:"NC",region:"NC"},
+  "greensboro":{zip:"27401",city:"Greensboro",state:"NC",region:"DEFAULT"},
+  "durham":{zip:"27701",city:"Durham",state:"NC",region:"NC"},
+  "winston-salem":{zip:"27101",city:"Winston-Salem",state:"NC",region:"DEFAULT"},
+  "fayetteville nc":{zip:"28301",city:"Fayetteville",state:"NC",region:"DEFAULT"},
+  "chapel hill":{zip:"27514",city:"Chapel Hill",state:"NC",region:"NC"},
+  "asheville":{zip:"28801",city:"Asheville",state:"NC",region:"DEFAULT"},
+  // Louisiana
+  "new orleans":{zip:"70112",city:"New Orleans",state:"LA",region:"LA"},
+  "baton rouge":{zip:"70801",city:"Baton Rouge",state:"LA",region:"DEFAULT"},
+  "shreveport":{zip:"71101",city:"Shreveport",state:"LA",region:"DEFAULT"},
+  "lafayette la":{zip:"70501",city:"Lafayette",state:"LA",region:"DEFAULT"},
+  // Massachusetts
+  "boston":{zip:"02101",city:"Boston",state:"MA",region:"DEFAULT"},
+  "worcester":{zip:"01601",city:"Worcester",state:"MA",region:"DEFAULT"},
+  "springfield ma":{zip:"01101",city:"Springfield",state:"MA",region:"DEFAULT"},
+  "cambridge":{zip:"02139",city:"Cambridge",state:"MA",region:"DEFAULT"},
+  "lowell":{zip:"01851",city:"Lowell",state:"MA",region:"DEFAULT"},
+  // Maryland
+  "baltimore":{zip:"21201",city:"Baltimore",state:"MD",region:"DEFAULT"},
+  "columbia md":{zip:"21044",city:"Columbia",state:"MD",region:"DEFAULT"},
+  "annapolis":{zip:"21401",city:"Annapolis",state:"MD",region:"DEFAULT"},
+  // Ohio
+  "columbus":{zip:"43201",city:"Columbus",state:"OH",region:"OH"},
+  "cleveland":{zip:"44101",city:"Cleveland",state:"OH",region:"DEFAULT"},
+  "cincinnati":{zip:"45201",city:"Cincinnati",state:"OH",region:"DEFAULT"},
+  "toledo":{zip:"43601",city:"Toledo",state:"OH",region:"DEFAULT"},
+  "akron":{zip:"44301",city:"Akron",state:"OH",region:"DEFAULT"},
+  "dayton":{zip:"45401",city:"Dayton",state:"OH",region:"DEFAULT"},
+  // Michigan
+  "detroit":{zip:"48201",city:"Detroit",state:"MI",region:"DEFAULT"},
+  "grand rapids":{zip:"49501",city:"Grand Rapids",state:"MI",region:"DEFAULT"},
+  "warren mi":{zip:"48088",city:"Warren",state:"MI",region:"DEFAULT"},
+  "lansing":{zip:"48901",city:"Lansing",state:"MI",region:"DEFAULT"},
+  "ann arbor":{zip:"48103",city:"Ann Arbor",state:"MI",region:"DEFAULT"},
+  // Nevada
+  "las vegas":{zip:"89101",city:"Las Vegas",state:"NV",region:"NV"},
+  "henderson":{zip:"89002",city:"Henderson",state:"NV",region:"NV"},
+  "reno":{zip:"89501",city:"Reno",state:"NV",region:"DEFAULT"},
+  "north las vegas":{zip:"89030",city:"North Las Vegas",state:"NV",region:"NV"},
+  // Oregon
+  "portland":{zip:"97201",city:"Portland",state:"OR",region:"OR"},
+  "eugene":{zip:"97401",city:"Eugene",state:"OR",region:"DEFAULT"},
+  "salem or":{zip:"97301",city:"Salem",state:"OR",region:"DEFAULT"},
+  "bend":{zip:"97701",city:"Bend",state:"OR",region:"DEFAULT"},
+  // Wisconsin
+  "milwaukee":{zip:"53201",city:"Milwaukee",state:"WI",region:"WI"},
+  "madison":{zip:"53701",city:"Madison",state:"WI",region:"DEFAULT"},
+  "green bay":{zip:"54301",city:"Green Bay",state:"WI",region:"DEFAULT"},
+  // Minnesota
+  "minneapolis":{zip:"55401",city:"Minneapolis",state:"MN",region:"MN"},
+  "saint paul":{zip:"55101",city:"Saint Paul",state:"MN",region:"MN"},
+  "st paul":{zip:"55101",city:"Saint Paul",state:"MN",region:"MN"},
+  "rochester mn":{zip:"55901",city:"Rochester",state:"MN",region:"DEFAULT"},
+  "duluth":{zip:"55801",city:"Duluth",state:"MN",region:"DEFAULT"},
+  // Missouri
+  "kansas city":{zip:"64101",city:"Kansas City",state:"MO",region:"MO"},
+  "st louis":{zip:"63101",city:"St. Louis",state:"MO",region:"DEFAULT"},
+  "saint louis":{zip:"63101",city:"St. Louis",state:"MO",region:"DEFAULT"},
+  "springfield mo":{zip:"65801",city:"Springfield",state:"MO",region:"DEFAULT"},
+  // Indiana
+  "indianapolis":{zip:"46201",city:"Indianapolis",state:"IN",region:"DEFAULT"},
+  "fort wayne":{zip:"46801",city:"Fort Wayne",state:"IN",region:"DEFAULT"},
+  "evansville":{zip:"47701",city:"Evansville",state:"IN",region:"DEFAULT"},
+  "south bend":{zip:"46601",city:"South Bend",state:"IN",region:"DEFAULT"},
+  // Kentucky
+  "louisville":{zip:"40201",city:"Louisville",state:"KY",region:"DEFAULT"},
+  "lexington":{zip:"40501",city:"Lexington",state:"KY",region:"DEFAULT"},
+  "bowling green":{zip:"42101",city:"Bowling Green",state:"KY",region:"DEFAULT"},
+  // South Carolina
+  "columbia sc":{zip:"29201",city:"Columbia",state:"SC",region:"DEFAULT"},
+  "charleston sc":{zip:"29401",city:"Charleston",state:"SC",region:"DEFAULT"},
+  "greenville sc":{zip:"29601",city:"Greenville",state:"SC",region:"DEFAULT"},
+  "myrtle beach":{zip:"29577",city:"Myrtle Beach",state:"SC",region:"DEFAULT"},
+  // Alabama
+  "birmingham":{zip:"35201",city:"Birmingham",state:"AL",region:"DEFAULT"},
+  "montgomery":{zip:"36101",city:"Montgomery",state:"AL",region:"DEFAULT"},
+  "huntsville":{zip:"35801",city:"Huntsville",state:"AL",region:"DEFAULT"},
+  "mobile":{zip:"36601",city:"Mobile",state:"AL",region:"DEFAULT"},
+  // Oklahoma
+  "oklahoma city":{zip:"73101",city:"Oklahoma City",state:"OK",region:"DEFAULT"},
+  "tulsa":{zip:"74101",city:"Tulsa",state:"OK",region:"DEFAULT"},
+  // Iowa
+  "des moines":{zip:"50301",city:"Des Moines",state:"IA",region:"DEFAULT"},
+  "cedar rapids":{zip:"52401",city:"Cedar Rapids",state:"IA",region:"DEFAULT"},
+  // Kansas
+  "wichita":{zip:"67201",city:"Wichita",state:"KS",region:"DEFAULT"},
+  "topeka":{zip:"66601",city:"Topeka",state:"KS",region:"DEFAULT"},
+  // Arkansas
+  "little rock":{zip:"72201",city:"Little Rock",state:"AR",region:"DEFAULT"},
+  "fayetteville ar":{zip:"72701",city:"Fayetteville",state:"AR",region:"DEFAULT"},
+  // Mississippi
+  "jackson ms":{zip:"39201",city:"Jackson",state:"MS",region:"DEFAULT"},
+  "biloxi":{zip:"39530",city:"Biloxi",state:"MS",region:"DEFAULT"},
+  // Nebraska
+  "omaha":{zip:"68101",city:"Omaha",state:"NE",region:"DEFAULT"},
+  "lincoln ne":{zip:"68501",city:"Lincoln",state:"NE",region:"DEFAULT"},
+  // Utah
+  "salt lake city":{zip:"84101",city:"Salt Lake City",state:"UT",region:"UT"},
+  "slc":{zip:"84101",city:"Salt Lake City",state:"UT",region:"UT"},
+  "provo":{zip:"84601",city:"Provo",state:"UT",region:"DEFAULT"},
+  "ogden":{zip:"84401",city:"Ogden",state:"UT",region:"DEFAULT"},
+  // New Mexico
+  "albuquerque":{zip:"87101",city:"Albuquerque",state:"NM",region:"DEFAULT"},
+  "santa fe":{zip:"87501",city:"Santa Fe",state:"NM",region:"DEFAULT"},
+  // Hawaii
+  "honolulu":{zip:"96801",city:"Honolulu",state:"HI",region:"DEFAULT"},
+  // Alaska
+  "anchorage":{zip:"99501",city:"Anchorage",state:"AK",region:"DEFAULT"},
+  // Idaho
+  "boise":{zip:"83701",city:"Boise",state:"ID",region:"DEFAULT"},
+  // Montana
+  "billings":{zip:"59101",city:"Billings",state:"MT",region:"DEFAULT"},
+  "missoula":{zip:"59801",city:"Missoula",state:"MT",region:"DEFAULT"},
+  // Wyoming
+  "cheyenne":{zip:"82001",city:"Cheyenne",state:"WY",region:"DEFAULT"},
+  // North Dakota
+  "fargo":{zip:"58101",city:"Fargo",state:"ND",region:"DEFAULT"},
+  // South Dakota
+  "sioux falls":{zip:"57101",city:"Sioux Falls",state:"SD",region:"DEFAULT"},
+  // West Virginia
+  "charleston wv":{zip:"25301",city:"Charleston",state:"WV",region:"DEFAULT"},
+  "huntington wv":{zip:"25701",city:"Huntington",state:"WV",region:"DEFAULT"},
+  // Connecticut
+  "bridgeport":{zip:"06601",city:"Bridgeport",state:"CT",region:"DEFAULT"},
+  "new haven":{zip:"06501",city:"New Haven",state:"CT",region:"DEFAULT"},
+  "hartford":{zip:"06101",city:"Hartford",state:"CT",region:"DEFAULT"},
+  // Rhode Island
+  "providence":{zip:"02901",city:"Providence",state:"RI",region:"DEFAULT"},
+  // New Hampshire
+  "manchester nh":{zip:"03101",city:"Manchester",state:"NH",region:"DEFAULT"},
+  "concord nh":{zip:"03301",city:"Concord",state:"NH",region:"DEFAULT"},
+  // Vermont
+  "burlington vt":{zip:"05401",city:"Burlington",state:"VT",region:"DEFAULT"},
+  // Maine
+  "portland me":{zip:"04101",city:"Portland",state:"ME",region:"DEFAULT"},
+  "bangor":{zip:"04401",city:"Bangor",state:"ME",region:"DEFAULT"},
+  // New Jersey
+  "newark":{zip:"07101",city:"Newark",state:"NJ",region:"DEFAULT"},
+  "jersey city":{zip:"07301",city:"Jersey City",state:"NJ",region:"DEFAULT"},
+  "paterson":{zip:"07501",city:"Paterson",state:"NJ",region:"DEFAULT"},
+  "trenton":{zip:"08601",city:"Trenton",state:"NJ",region:"DEFAULT"},
+  "atlantic city":{zip:"08401",city:"Atlantic City",state:"NJ",region:"DEFAULT"},
+  // Delaware
+  "wilmington de":{zip:"19801",city:"Wilmington",state:"DE",region:"DEFAULT"},
+  // Washington DC
+  "washington dc":{zip:"20001",city:"Washington",state:"DC",region:"DEFAULT"},
+  "dc":{zip:"20001",city:"Washington",state:"DC",region:"DEFAULT"},
+  // Additional popular cities
+  "pittsburgh":{zip:"15201",city:"Pittsburgh",state:"PA",region:"DEFAULT"},
+  "buffalo":{zip:"14201",city:"Buffalo",state:"NY",region:"DEFAULT"},
 };
 
 function resolveSearch(input){
@@ -480,7 +719,7 @@ function renderHome(){
       <div>
         <div style="font-size:10px;color:rgba(255,255,255,0.18);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Popular</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${["Virginia Beach","New York","Miami","Chicago","Nashville","Austin","Atlanta","Seattle","Denver","New Orleans"].map(c=>`
+          ${["Virginia Beach","New York","Miami","Chicago","Nashville","Austin","Atlanta","Seattle","Las Vegas","New Orleans","Denver","Boston","Philadelphia","San Diego","Portland"].map(c=>`
             <div class="quick-city" data-city="${c}" style="padding:5px 11px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.05);transition:all 0.15s">${c}</div>
           `).join("")}
         </div>
