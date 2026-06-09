@@ -30,10 +30,27 @@ export default async function handler(req, res) {
   const results = { events: [], errors: [] };
 
   // Run all sources in parallel with 3 second timeout each
+  // Get state name for accurate searches
+  const stateMap = {
+    "23":"VA","10":"NY","11":"NY","90":"CA","94":"CA","92":"CA","60":"IL",
+    "77":"TX","75":"TX","78":"TX","76":"TX","33":"FL","32":"FL","30":"GA",
+    "98":"WA","80":"CO","85":"AZ","37":"TN","38":"TN","70":"LA","28":"NC",
+    "27":"NC","15":"PA","16":"PA","19":"PA","02":"MA","21":"MD","20":"DC",
+    "43":"OH","44":"OH","45":"OH","48":"MI","89":"NV","97":"OR","53":"WI",
+    "55":"MN","64":"MO","63":"MO","46":"IN","40":"KY","29":"SC","35":"AL",
+    "73":"OK","74":"OK","68":"NE","84":"UT","87":"NM","96":"HI","99":"AK",
+    "83":"ID","59":"MT","82":"WY","58":"ND","57":"SD","50":"IA","66":"KS",
+    "72":"AR","39":"MS","24":"WV","05":"VT","03":"NH","04":"ME","06":"CT",
+    "02":"RI","07":"NJ","08":"NJ","19":"DE","54":"WI","56":"MN","65":"MO"
+  };
+  const prefix2 = zip.slice(0,2);
+  const prefix3 = zip.slice(0,3);
+  const stateName = stateMap[prefix2] || stateMap[prefix3] || "";
+
   const [tmRes, serpRes, rapidRes, vbRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip), 3000),
-    fetchWithTimeout(fetchSerpAPI(cityName, zip), 3000),
-    fetchWithTimeout(fetchRapidAPI(cityName, zip), 3000),
+    fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName), 3000),
+    fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName), 3000),
     isVB ? fetchWithTimeout(fetchVirginiaBeach(), 3000) : Promise.resolve([]),
   ]);
 
@@ -127,8 +144,10 @@ async function fetchTicketmaster(zip) {
 }
 
 // ── SerpAPI ───────────────────────────────────────────────────────────────────
-async function fetchSerpAPI(cityName, zip) {
-  const query = encodeURIComponent(`events in ${cityName} this month`);
+async function fetchSerpAPI(cityName, zip, stateName) {
+  // Include state in query to avoid city name ambiguity (e.g. Franklin PA vs Franklin TN)
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`events in ${location} this month`);
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us`;
   const r = await fetch(url);
   const d = await r.json();
@@ -151,8 +170,9 @@ async function fetchSerpAPI(cityName, zip) {
 }
 
 // ── RapidAPI ──────────────────────────────────────────────────────────────────
-async function fetchRapidAPI(cityName, zip) {
-  const query = encodeURIComponent(`things to do in ${cityName}`);
+async function fetchRapidAPI(cityName, zip, stateName) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`things to do in ${location}`);
   const url = `https://real-time-events-search.p.rapidapi.com/search-events?query=${query}&date=any&is_virtual=false&start=0`;
   const r = await fetch(url, {
     headers: {
