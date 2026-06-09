@@ -596,7 +596,8 @@ function renderResults(){
           ${ev.sched.map((s,i)=>{const p=s.split(" · ");return`<div style="display:flex;gap:12px;padding:7px 0;border-bottom:${i<ev.sched.length-1?"1px solid rgba(255,255,255,0.04)":"none"}"><span style="font-size:11px;color:${meta.color};min-width:68px;font-weight:600">${p[0]}</span><span style="font-size:11px;color:rgba(255,255,255,0.35)">${san(p[1]||"")}</span></div>`;}).join("")}`:""}
         <div style="display:flex;gap:8px;margin-top:14px">
           <div class="cal-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${ev.date||""}" data-addr="${encodeURIComponent(ev.address||ev.location)}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">📅 Calendar</div>
-          ${ev.url?`<a href="${ev.url}" target="_blank" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20;text-decoration:none">🎟 Tickets</a>`:`<div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20">Share ↗</div>`}
+          ${ev.url?`<a href="${ev.url}" target="_blank" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20;text-decoration:none">🎟 Tickets</a>`:""}
+          <div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" data-url="${ev.url||""}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.08)">Share ↗</div>
         </div>
       </div>`:""}
     </div>`;
@@ -768,7 +769,28 @@ function bindEvents(){
   });
   document.querySelectorAll(".clear-all").forEach(el=>{el.addEventListener("click",()=>{state.typeFilter="All";state.whoFilter="all";state.freeOnly=false;state.dateRange="3months";render();});});
   document.querySelectorAll(".cal-btn").forEach(el=>{el.addEventListener("click",()=>{const d=(el.dataset.date||"").replace(/-/g,"");if(d)window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${el.dataset.name}&dates=${d}/${d}&location=${el.dataset.addr}`,"_blank");});});
-  document.querySelectorAll(".share-btn").forEach(el=>{el.addEventListener("click",()=>{const txt=`${decodeURIComponent(el.dataset.name)} — ${el.dataset.date} at ${decodeURIComponent(el.dataset.loc)}. ${el.dataset.cost==="Free"?"Free!":""}`;if(navigator.share)navigator.share({title:decodeURIComponent(el.dataset.name),text:txt});else{navigator.clipboard?.writeText(txt);showToast("Copied!");}});});
+  document.querySelectorAll(".share-btn").forEach(el=>{
+    el.addEventListener("click",()=>{
+      const name=decodeURIComponent(el.dataset.name);
+      const date=el.dataset.date;
+      const loc=decodeURIComponent(el.dataset.loc);
+      const cost=el.dataset.cost;
+      const url=el.dataset.url||"";
+      const txt=`${name} — ${date} at ${loc}. ${cost==="Free"?"It's free! ":""}Check it out on Buzz 🎉`;
+      if(navigator.share){
+        navigator.share({
+          title:name,
+          text:txt,
+          url:url||window.location.href
+        });
+      } else {
+        const copyText=url?`${txt}
+${url}`:txt;
+        navigator.clipboard?.writeText(copyText);
+        showToast("📋 Copied to clipboard!");
+      }
+    });
+  });
 
   // ── Review handlers ──────────────────────────────────────────────────────
   document.querySelectorAll(".star-btn").forEach(el=>{
