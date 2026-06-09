@@ -51,11 +51,13 @@ export default async function handler(req, res) {
   const prefix3 = zip.slice(0,3);
   const stateName = stateMap[prefix2] || stateMap[prefix3] || "";
 
-  const [tmRes, serpRes, rapidRes, vbRes] = await Promise.allSettled([
+  const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
     isVB ? fetchWithTimeout(fetchVirginiaBeach(), 3000) : Promise.resolve([]),
+    fetchWithTimeout(fetchPredictHQ(zip, userLat, userLng), 4000),
+    fetchWithTimeout(fetchSerpAPI2(cityName, zip, stateName, userLat, userLng), 3000),
   ]);
 
   if (tmRes.status === "fulfilled") results.events.push(...tmRes.value);
@@ -69,6 +71,12 @@ export default async function handler(req, res) {
 
   if (vbRes.status === "fulfilled") results.events.push(...vbRes.value);
   else results.errors.push("VB City: " + vbRes.reason?.message);
+
+  if (phqRes.status === "fulfilled") results.events.push(...phqRes.value);
+  else results.errors.push("PredictHQ: " + phqRes.reason?.message);
+
+  if (serp2Res.status === "fulfilled") results.events.push(...serp2Res.value);
+  else results.errors.push("Google Events 2: " + serp2Res.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -260,6 +268,102 @@ async function fetchVirginiaBeach() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// ── PredictHQ ─────────────────────────────────────────────────────────────────
+async function fetchPredictHQ(zip, userLat, userLng) {
+  const hasCoords = userLat && userLng;
+  
+  // Build location query - use coords if available, else ZIP
+  let locationQuery;
+  if (hasCoords) {
+    locationQuery = `within=50mi@${userLat},${userLng}`;
+  } else {
+    // Convert ZIP to rough lat/lng using Ticketmaster's geocoding
+    locationQuery = `country=US&place.scope.country=US`;
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+  const future = new Date();
+  future.setMonth(future.getMonth() + 3);
+  const futureDate = future.toISOString().split("T")[0];
+
+  const url = `https://api.predicthq.com/v1/events/?${locationQuery}&start.gte=${today}&start.lte=${futureDate}&limit=50&sort=start&state=active&country=US`;
+  
+  const r = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${PHQ_KEY}`,
+      "Accept": "application/json",
+    }
+  });
+  
+  if (!r.ok) throw new Error(`PredictHQ ${r.status}`);
+  const d = await r.json();
+  
+  return (d.results || []).map((ev, i) => {
+    const type = classifyPHQ(ev.category, ev.title);
+    const lat = ev.location?.[1] || null;
+    const lng = ev.location?.[0] || null;
+    return {
+      id: "phq_" + ev.id,
+      name: ev.title || "Local Event",
+      type,
+      startDate: ev.start?.split("T")[0] || "",
+      endDate: ev.end?.split("T")[0] || "",
+      location: ev.entities?.[0]?.name || ev.place_hierarchies?.[0]?.[2] || "Local Venue",
+      address: ev.entities?.[0]?.formatted_address || "",
+      description: ev.description || "",
+      familyRating: 4,
+      cost: ev.free ? "Free" : "See site",
+      url: ev.url || "",
+      source: "PredictHQ",
+      lat: lat ? parseFloat(lat) : null,
+      lng: lng ? parseFloat(lng) : null,
+      subEvents: [],
+    };
+  });
+}
+
+// ── SerpAPI second query — weekend/nightlife focus ────────────────────────────
+async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`things to do this weekend ${location}`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=50` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp2_" + i + "_" + zip,
+    name: ev.title || "Local Event",
+    type: classifyByTitle(ev.title || ""),
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 4,
+    cost: ev.ticket_info?.[0]?.price || "See site",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+function classifyPHQ(category, title) {
+  const c = (category || "").toLowerCase();
+  const t = (title || "").toLowerCase();
+  if (c === "concerts") return "Music";
+  if (c === "sports") return "Sports";
+  if (c === "festivals") return "Festival";
+  if (c === "expos") return "Community";
+  if (c === "conferences") return "Community";
+  if (c === "community") return "Community";
+  if (c === "performing-arts") return "Arts";
+  if (c === "school-holidays") return "Family";
+  if (c === "public-holidays") return "Community";
+  if (c === "observances") return "Community";
+  return classifyByTitle(t);
+}
+
 function calcDistance(lat1, lon1, lat2, lon2) {
   const R = 3959; // miles
   const dLat = (lat2-lat1) * Math.PI/180;
