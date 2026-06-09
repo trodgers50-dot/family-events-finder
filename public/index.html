@@ -752,6 +752,14 @@ function renderResults(){
     if(!withinDays(ev.date,maxDays))return false;
     return true;
   });
+  // Always sort chronologically at render time
+  filtered.sort((a,b)=>{
+    if(!a.date&&!b.date)return 0;
+    if(!a.date)return 1;
+    if(!b.date)return -1;
+    return a.date.localeCompare(b.date);
+  });
+
   const types=["All",...new Set(state.events.map(e=>e.type))];
   const freeCount=filtered.filter(e=>e.cost==="Free").length;
   const weekendCount=filtered.filter(e=>e.isWeekend).length;
