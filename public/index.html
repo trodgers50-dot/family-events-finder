@@ -51,21 +51,31 @@ async function sbFetch(path, options={}) {
 }
 
 async function signUp(email, password) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
-    method: "POST",
-    headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
-  });
-  return r.json();
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await r.json();
+    return data;
+  } catch(e) {
+    return { error: e.message };
+  }
 }
 
 async function signIn(email, password) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password })
-  });
-  return r.json();
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await r.json();
+    return data;
+  } catch(e) {
+    return { error: e.message };
+  }
 }
 
 async function signOut() {
@@ -490,7 +500,16 @@ async function handleAuth(e){
   const {authEmail,authPassword,authMode}=state;
   if(!authEmail||!authPassword){setState({authLoading:false,authError:"Please enter email and password"});return;}
   
-  const result = authMode==="signup" ? await signUp(authEmail,authPassword) : await signIn(authEmail,authPassword);
+  // Add timeout so it never gets permanently stuck
+  let result;
+  try {
+    const authPromise = authMode==="signup" ? signUp(authEmail,authPassword) : signIn(authEmail,authPassword);
+    const timeoutPromise = new Promise((_,reject) => setTimeout(()=>reject(new Error("Request timed out")), 10000));
+    result = await Promise.race([authPromise, timeoutPromise]);
+  } catch(e) {
+    setState({authLoading:false,authError:e.message||"Connection failed. Check your internet and try again."});
+    return;
+  }
   
   // Handle errors
   if(result.error||result.error_description||result.msg){
@@ -687,11 +706,17 @@ function renderAuthModal(){
           <span id="auth-toggle" style="color:#a5b4fc;cursor:pointer;margin-left:4px">${state.authMode==="signup"?"Sign in":"Sign up"}</span>
         </div>
       </div>
-      <button id="auth-close" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.4);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">✕</button>
+      <button id="auth-close" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.4);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;z-index:10">✕</button>
     </div>
   `;
-  overlay.style.position="fixed";
+  // Make inner div relative so absolute positioning works
+  overlay.querySelector("div").style.position="relative";
   document.body.appendChild(overlay);
+  
+  // Close on overlay background click
+  overlay.addEventListener("click", e=>{
+    if(e.target===overlay) setState({authModal:null});
+  });
 
   document.getElementById("auth-email").addEventListener("input",e=>state.authEmail=e.target.value);
   document.getElementById("auth-password").addEventListener("input",e=>state.authPassword=e.target.value);
