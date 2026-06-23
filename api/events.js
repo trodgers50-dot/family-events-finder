@@ -56,7 +56,7 @@ export default async function handler(req, res) {
   const stateName = stateMap[prefix2] || stateMap[prefix3] || "";
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
-          serp3Res, serp4Res, serp5Res, bitRes] = await Promise.allSettled([
+          serp3Res, serp4Res, serp5Res] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -66,7 +66,6 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchSerpAPI3(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI4(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI5(cityName, zip, stateName, userLat, userLng), 3000),
-    BIT_KEY ? fetchWithTimeout(fetchBandsintown(cityName, stateName, userLat, userLng), 4000) : Promise.resolve([]),
   ]);
 
   if (tmRes.status === "fulfilled") results.events.push(...tmRes.value);
@@ -95,9 +94,6 @@ export default async function handler(req, res) {
 
   if (serp5Res.status === "fulfilled") results.events.push(...serp5Res.value);
   else results.errors.push("Google Events 5: " + serp5Res.reason?.message);
-
-  if (bitRes.status === "fulfilled") results.events.push(...bitRes.value);
-  else results.errors.push("Bandsintown: " + bitRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -235,6 +231,7 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
 
 // ── RapidAPI ──────────────────────────────────────────────────────────────────
 async function fetchRapidAPI(cityName, zip, stateName, lat, lng) {
+  if (!RAPID_KEY) return [];
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
   const query = encodeURIComponent(`things to do near ${location}`);
   const url = `https://real-time-events-search.p.rapidapi.com/search-events?query=${query}&date=any&is_virtual=false&start=0`;
@@ -291,6 +288,7 @@ async function fetchVirginiaBeach() {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 // ── PredictHQ ─────────────────────────────────────────────────────────────────
 async function fetchPredictHQ(zip, userLat, userLng) {
+  if (!PHQ_KEY) return [];
   const hasCoords = userLat && userLng;
   
   // Build location query - use coords if available, else ZIP
@@ -463,39 +461,6 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
   }));
 }
 
-// ── Bandsintown — live music in small venues ──────────────────────────────────
-async function fetchBandsintown(cityName, stateName, lat, lng) {
-  if (!BIT_KEY) return [];
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
-  const url = `https://rest.bandsintown.com/v4/events?location=${encodeURIComponent(location)}&radius=50&app_id=${BIT_KEY}&date=upcoming`;
-  const r = await fetch(url, {
-    headers: { "Accept": "application/json" }
-  });
-  if (!r.ok) throw new Error(`Bandsintown ${r.status}`);
-  const d = await r.json();
-  const events = Array.isArray(d) ? d : d.data || [];
-  return events.slice(0, 20).map((ev, i) => {
-    const date = ev.datetime?.split("T")[0] || "";
-    const venue = ev.venue || {};
-    return {
-      id: "bit_" + (ev.id || i),
-      name: ev.title || (ev.artist?.name ? `${ev.artist.name} Live` : "Live Music"),
-      type: "Music",
-      startDate: date,
-      endDate: date,
-      location: venue.name || cityName,
-      address: [venue.street_address, venue.city, venue.region].filter(Boolean).join(", "),
-      description: ev.description || `${ev.artist?.name || "Live"} performing at ${venue.name || cityName}`,
-      familyRating: 3,
-      cost: ev.offers?.[0]?.status === "available" ? "See site" : "See site",
-      url: ev.url || ev.offers?.[0]?.url || "",
-      source: "Bandsintown",
-      lat: venue.latitude ? parseFloat(venue.latitude) : null,
-      lng: venue.longitude ? parseFloat(venue.longitude) : null,
-      subEvents: [],
-    };
-  });
-}
 
 function calcDistance(lat1, lon1, lat2, lon2) {
   const R = 3959; // miles
