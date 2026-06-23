@@ -494,58 +494,7 @@ function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}
 function m2(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
 
 // ── Auth handlers ─────────────────────────────────────────────────────────────
-async function handleAuth(e){
-  e&&e.preventDefault();
-  setState({authLoading:true,authError:""});
-  const {authEmail,authPassword,authMode}=state;
-  if(!authEmail||!authPassword){setState({authLoading:false,authError:"Please enter email and password"});return;}
-  
-  // Add timeout so it never gets permanently stuck
-  let result;
-  try {
-    const authPromise = authMode==="signup" ? signUp(authEmail,authPassword) : signIn(authEmail,authPassword);
-    const timeoutPromise = new Promise((_,reject) => setTimeout(()=>reject(new Error("Request timed out")), 10000));
-    result = await Promise.race([authPromise, timeoutPromise]);
-  } catch(e) {
-    setState({authLoading:false,authError:e.message||"Connection failed. Check your internet and try again."});
-    return;
-  }
-  
-  // Handle errors
-  if(result.error||result.error_description||result.msg){
-    const errMsg = result.error_description||result.msg||result.error||"Authentication failed";
-    setState({authLoading:false,authError:errMsg});
-    return;
-  }
-  
-  // Supabase returns different shapes depending on version
-  // signIn returns: {access_token, user, ...} or {session:{access_token,...}, user:{...}}
-  // signUp returns: {user:{...}, session:{...}} or {access_token, user,...}
-  const user = result.user || result.session?.user;
-  const session = result.session || (result.access_token ? result : null);
-  
-  if(user){
-    const going = await getUserGoing(user.id);
-    setState({session:session||result,user,authModal:null,authLoading:false,authEmail:"",authPassword:"",going});
-    showToast(authMode==="signup"?"✓ Account created! Welcome to Buzz":"✓ Welcome back!");
-  } else if(authMode==="signup"&&result.id) {
-    // Some Supabase versions return user directly
-    const going = await getUserGoing(result.id);
-    setState({session:result,user:result,authModal:null,authLoading:false,authEmail:"",authPassword:"",going});
-    showToast("✓ Account created! Welcome to Buzz");
-  } else if(authMode==="signup"&&result.user&&!result.session) {
-    // Email confirmation required
-    setState({authModal:null,authLoading:false,authEmail:"",authPassword:""});
-    showToast("✓ Check your email to confirm your account!");
-  } else {
-    // Log the actual error for debugging
-    console.log("Auth result:", JSON.stringify(result));
-    const errMsg = result.message||result.error_description||result.error||result.msg||"Authentication failed. Please try again.";
-    setState({authLoading:false,authError:errMsg});
-  }
-}
 
-// ── Search ────────────────────────────────────────────────────────────────────
 async function doSearch(input,regionOverride){
   const resolved=regionOverride||resolveSearch(input);
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
@@ -724,52 +673,192 @@ async function initMap(events, center){
 function render(){
   document.getElementById("root").innerHTML=state.screen==="home"?renderHome():renderResults();
   bindEvents();
-  if(state.authModal)renderAuthModal();
+  // Only create modal if it doesn't exist yet
+  const existingModal = document.getElementById("auth-modal-overlay");
+  if(state.authModal && !existingModal){
+    renderAuthModal();
+  } else if(!state.authModal && existingModal){
+    existingModal.remove();
+  } else if(state.authModal && existingModal){
+    // Update modal content without recreating it
+    updateAuthModal();
+  }
 }
 
 function renderAuthModal(){
-  const existing=document.getElementById("auth-modal-overlay");
-  if(existing)existing.remove();
   const overlay=document.createElement("div");
   overlay.id="auth-modal-overlay";
-  overlay.style.cssText="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)";
-  overlay.innerHTML=`
-    <div style="background:#13131f;border-radius:20px;padding:28px 24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,0.08);animation:fadeIn 0.2s ease">
+  overlay.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)";
+  overlay.innerHTML=getModalHTML();
+  document.body.appendChild(overlay);
+  bindModalEvents(overlay);
+}
+
+function getModalHTML(){
+  return `
+    <div id="auth-modal-inner" style="position:relative;background:#13131f;border-radius:20px;padding:28px 24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,0.08)">
+      <button id="auth-close" style="position:absolute;top:12px;right:12px;background:rgba(255,255,255,0.08);border:none;color:rgba(255,255,255,0.5);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:16px;line-height:1;z-index:10">✕</button>
       <div style="text-align:center;margin-bottom:24px">
         <div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-1px">buzz</div>
-        <div style="font-size:14px;color:rgba(255,255,255,0.4);margin-top:4px">${state.authMode==="signup"?"Create your account":"Welcome back"}</div>
+        <div id="auth-subtitle" style="font-size:14px;color:rgba(255,255,255,0.4);margin-top:4px">${state.authMode==="signup"?"Create your account":"Welcome back"}</div>
       </div>
-      ${state.authError?`<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:10px 14px;font-size:13px;color:#fca5a5;margin-bottom:16px">${state.authError}</div>`:""}
+      <div id="auth-error-box" style="display:${state.authError?"block":"none"};background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:10px 14px;font-size:13px;color:#fca5a5;margin-bottom:16px">${state.authError||""}</div>
       <div style="display:flex;flex-direction:column;gap:12px">
-        <input id="auth-email" type="email" value="${state.authEmail}" placeholder="Email address" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%"/>
-        <input id="auth-password" type="password" value="${state.authPassword}" placeholder="Password" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%"/>
-        <button id="auth-submit" style="background:#6366f1;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;width:100%">
+        <input id="auth-email" type="email" value="${state.authEmail}" placeholder="Email address" 
+          style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%;box-sizing:border-box"/>
+        <input id="auth-password" type="password" value="${state.authPassword}" placeholder="Password (min 6 chars)"
+          style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%;box-sizing:border-box"/>
+        <button id="auth-submit" style="background:#6366f1;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;width:100%;opacity:${state.authLoading?0.7:1}">
           ${state.authLoading?"Loading...":(state.authMode==="signup"?"Create Account":"Sign In")}
         </button>
         <div style="text-align:center;font-size:13px;color:rgba(255,255,255,0.4)">
           ${state.authMode==="signup"?"Already have an account?":"Don't have an account?"}
-          <span id="auth-toggle" style="color:#a5b4fc;cursor:pointer;margin-left:4px">${state.authMode==="signup"?"Sign in":"Sign up"}</span>
+          <span id="auth-toggle" style="color:#a5b4fc;cursor:pointer;margin-left:4px;text-decoration:underline">${state.authMode==="signup"?"Sign in":"Sign up"}</span>
         </div>
       </div>
-      <button id="auth-close" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.4);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;z-index:10">✕</button>
     </div>
   `;
-  // Make inner div relative so absolute positioning works
-  overlay.querySelector("div").style.position="relative";
-  document.body.appendChild(overlay);
+}
+
+function updateAuthModal(){
+  // Update error, loading state, and subtitle without recreating
+  const errBox = document.getElementById("auth-error-box");
+  const submitBtn = document.getElementById("auth-submit");
+  const subtitle = document.getElementById("auth-subtitle");
+  if(errBox){
+    errBox.style.display = state.authError ? "block" : "none";
+    errBox.textContent = state.authError || "";
+  }
+  if(submitBtn){
+    submitBtn.textContent = state.authLoading ? "Loading..." : (state.authMode==="signup"?"Create Account":"Sign In");
+    submitBtn.style.opacity = state.authLoading ? "0.7" : "1";
+  }
+  if(subtitle){
+    subtitle.textContent = state.authMode==="signup" ? "Create your account" : "Welcome back";
+  }
+}
+
+function bindModalEvents(overlay){
+  // Close on X button
+  document.getElementById("auth-close")?.addEventListener("click",()=>{
+    overlay.remove();
+    state.authModal=null;
+    state.authError="";
+    state.authLoading=false;
+  });
   
-  // Close on overlay background click
-  overlay.addEventListener("click", e=>{
-    if(e.target===overlay) setState({authModal:null});
+  // Close on overlay click
+  overlay.addEventListener("click",e=>{
+    if(e.target===overlay){
+      overlay.remove();
+      state.authModal=null;
+      state.authError="";
+      state.authLoading=false;
+    }
   });
 
-  document.getElementById("auth-email").addEventListener("input",e=>state.authEmail=e.target.value);
-  document.getElementById("auth-password").addEventListener("input",e=>state.authPassword=e.target.value);
-  document.getElementById("auth-password").addEventListener("keydown",e=>{if(e.key==="Enter")handleAuth();});
-  document.getElementById("auth-submit").addEventListener("click",handleAuth);
-  document.getElementById("auth-toggle").addEventListener("click",()=>setState({authMode:state.authMode==="signup"?"signin":"signup",authError:""}));
-  document.getElementById("auth-close").addEventListener("click",()=>setState({authModal:null}));
+  // Email input
+  document.getElementById("auth-email")?.addEventListener("input",e=>{
+    state.authEmail=e.target.value;
+  });
+
+  // Password input
+  document.getElementById("auth-password")?.addEventListener("input",e=>{
+    state.authPassword=e.target.value;
+  });
+
+  // Enter key on password
+  document.getElementById("auth-password")?.addEventListener("keydown",e=>{
+    if(e.key==="Enter") handleModalAuth(overlay);
+  });
+
+  // Submit button
+  document.getElementById("auth-submit")?.addEventListener("click",()=>handleModalAuth(overlay));
+
+  // Toggle mode
+  document.getElementById("auth-toggle")?.addEventListener("click",()=>{
+    state.authMode = state.authMode==="signup" ? "signin" : "signup";
+    state.authError = "";
+    const inner = document.getElementById("auth-modal-inner");
+    if(inner) inner.outerHTML = getModalHTML();
+    // Re-bind after content replacement
+    const newOverlay = document.getElementById("auth-modal-overlay");
+    if(newOverlay) bindModalEvents(newOverlay);
+  });
 }
+
+async function handleModalAuth(overlay){
+  if(state.authLoading) return;
+  const emailEl = document.getElementById("auth-email");
+  const passEl = document.getElementById("auth-password");
+  const email = emailEl?.value?.trim() || state.authEmail;
+  const password = passEl?.value || state.authPassword;
+
+  if(!email||!password){
+    state.authError = "Please enter your email and password";
+    updateAuthModal();
+    return;
+  }
+  if(password.length < 6){
+    state.authError = "Password must be at least 6 characters";
+    updateAuthModal();
+    return;
+  }
+
+  state.authLoading = true;
+  state.authError = "";
+  updateAuthModal();
+
+  try {
+    const authFn = state.authMode==="signup" ? signUp : signIn;
+    const result = await Promise.race([
+      authFn(email, password),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error("Request timed out after 10 seconds")),10000))
+    ]);
+
+    console.log("Auth result:", JSON.stringify(result).slice(0,300));
+
+    if(result.error||result.error_description||result.msg){
+      state.authError = result.error_description||result.msg||result.error||"Authentication failed";
+      state.authLoading = false;
+      updateAuthModal();
+      return;
+    }
+
+    const user = result.user || result.session?.user;
+    const session = result.session || (result.access_token ? result : null);
+
+    if(user){
+      const going = await getUserGoing(user.id);
+      state.session = session||result;
+      state.user = user;
+      state.authModal = null;
+      state.authLoading = false;
+      state.authEmail = "";
+      state.authPassword = "";
+      state.going = going;
+      overlay.remove();
+      showToast(state.authMode==="signup"?"✓ Account created! Welcome to Buzz":"✓ Welcome back!");
+      render();
+    } else if(state.authMode==="signup" && result.user===null && !result.error){
+      // Email confirmation required
+      state.authModal = null;
+      state.authLoading = false;
+      overlay.remove();
+      showToast("✓ Check your email to confirm your account!");
+      render();
+    } else {
+      state.authError = "Sign in failed. Check your email and password.";
+      state.authLoading = false;
+      updateAuthModal();
+    }
+  } catch(e){
+    state.authError = e.message || "Connection failed. Try again.";
+    state.authLoading = false;
+    updateAuthModal();
+  }
+}
+
 
 function renderHome(){
   const sugg=state.suggestions;
