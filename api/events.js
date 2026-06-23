@@ -51,13 +51,18 @@ export default async function handler(req, res) {
   const prefix3 = zip.slice(0,3);
   const stateName = stateMap[prefix2] || stateMap[prefix3] || "";
 
-  const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res] = await Promise.allSettled([
+  const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
+          serp3Res, serp4Res, serp5Res, bitRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
     isVB ? fetchWithTimeout(fetchVirginiaBeach(), 3000) : Promise.resolve([]),
     fetchWithTimeout(fetchPredictHQ(zip, userLat, userLng), 4000),
     fetchWithTimeout(fetchSerpAPI2(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI3(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI4(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI5(cityName, zip, stateName, userLat, userLng), 3000),
+    BIT_KEY ? fetchWithTimeout(fetchBandsintown(cityName, stateName, userLat, userLng), 4000) : Promise.resolve([]),
   ]);
 
   if (tmRes.status === "fulfilled") results.events.push(...tmRes.value);
@@ -77,6 +82,18 @@ export default async function handler(req, res) {
 
   if (serp2Res.status === "fulfilled") results.events.push(...serp2Res.value);
   else results.errors.push("Google Events 2: " + serp2Res.reason?.message);
+
+  if (serp3Res.status === "fulfilled") results.events.push(...serp3Res.value);
+  else results.errors.push("Google Events 3: " + serp3Res.reason?.message);
+
+  if (serp4Res.status === "fulfilled") results.events.push(...serp4Res.value);
+  else results.errors.push("Google Events 4: " + serp4Res.reason?.message);
+
+  if (serp5Res.status === "fulfilled") results.events.push(...serp5Res.value);
+  else results.errors.push("Google Events 5: " + serp5Res.reason?.message);
+
+  if (bitRes.status === "fulfilled") results.events.push(...bitRes.value);
+  else results.errors.push("Bandsintown: " + bitRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -362,6 +379,118 @@ function classifyPHQ(category, title) {
   if (c === "public-holidays") return "Community";
   if (c === "observances") return "Community";
   return classifyByTitle(t);
+}
+
+// ── SerpAPI Query 3 — free events focus ──────────────────────────────────────
+async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`free events near ${location}`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=50` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp3_" + i + "_" + zip,
+    name: ev.title || "Local Event",
+    type: classifyByTitle(ev.title || ""),
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 4,
+    cost: "Free",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+// ── SerpAPI Query 4 — concerts and live music focus ───────────────────────────
+async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`concerts live music near ${location}`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=50` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp4_" + i + "_" + zip,
+    name: ev.title || "Local Event",
+    type: "Music",
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 4,
+    cost: ev.ticket_info?.[0]?.price || "See site",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+// ── SerpAPI Query 5 — festivals and outdoor events ────────────────────────────
+async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`festivals outdoor events farmer market near ${location}`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=50` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp5_" + i + "_" + zip,
+    name: ev.title || "Local Event",
+    type: classifyByTitle(ev.title || ""),
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 5,
+    cost: ev.ticket_info?.[0]?.price || "Free",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+// ── Bandsintown — live music in small venues ──────────────────────────────────
+async function fetchBandsintown(cityName, stateName, lat, lng) {
+  if (!BIT_KEY) return [];
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const url = `https://rest.bandsintown.com/v4/events?location=${encodeURIComponent(location)}&radius=50&app_id=${BIT_KEY}&date=upcoming`;
+  const r = await fetch(url, {
+    headers: { "Accept": "application/json" }
+  });
+  if (!r.ok) throw new Error(`Bandsintown ${r.status}`);
+  const d = await r.json();
+  const events = Array.isArray(d) ? d : d.data || [];
+  return events.slice(0, 20).map((ev, i) => {
+    const date = ev.datetime?.split("T")[0] || "";
+    const venue = ev.venue || {};
+    return {
+      id: "bit_" + (ev.id || i),
+      name: ev.title || (ev.artist?.name ? `${ev.artist.name} Live` : "Live Music"),
+      type: "Music",
+      startDate: date,
+      endDate: date,
+      location: venue.name || cityName,
+      address: [venue.street_address, venue.city, venue.region].filter(Boolean).join(", "),
+      description: ev.description || `${ev.artist?.name || "Live"} performing at ${venue.name || cityName}`,
+      familyRating: 3,
+      cost: ev.offers?.[0]?.status === "available" ? "See site" : "See site",
+      url: ev.url || ev.offers?.[0]?.url || "",
+      source: "Bandsintown",
+      lat: venue.latitude ? parseFloat(venue.latitude) : null,
+      lng: venue.longitude ? parseFloat(venue.longitude) : null,
+      subEvents: [],
+    };
+  });
 }
 
 function calcDistance(lat1, lon1, lat2, lon2) {
