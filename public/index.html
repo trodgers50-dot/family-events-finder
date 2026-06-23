@@ -7,341 +7,249 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="Buzz"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif;background:#0a0a0f;color:#fff;min-height:100vh;}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
+input,textarea{font-family:-apple-system,BlinkMacSystemFont,sans-serif;}
+#map{width:100%;height:calc(100vh - 180px);background:#0a0a0f;}
+.leaflet-container{background:#1a1a2e !important;}
+.leaflet-tile{filter:brightness(0.7) saturate(0.8);}
+.map-popup{background:#1a1a2e;color:#fff;border-radius:12px;padding:12px;min-width:200px;border:1px solid rgba(255,255,255,0.1);}
+.map-popup h3{font-size:13px;font-weight:700;margin-bottom:4px;color:#f1f5f9;}
+.map-popup p{font-size:11px;color:rgba(255,255,255,0.5);margin-bottom:6px;}
+.map-popup .badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;}
 </style>
 </head>
 <body>
 <div id="root"></div>
+<div id="map-container" style="display:none;position:fixed;inset:0;z-index:50;background:#0a0a0f;"></div>
+
 <script type="module">
-// Buzz v2.1 - 2026-06-06 20:21
-
-
-const PROXY_URL = "https://buzzfinder.app/api/events";
+// ── Config ────────────────────────────────────────────────────────────────────
+const PROXY_URL    = "https://buzzfinder.app/api/events";
 const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_U5KBIkFT7l0jSSD8QaYJPQ_dEZWQJ63";
 
-// ── Reviews (Supabase) ────────────────────────────────────────────────────────
-async function submitReview(eventId, eventName, rating, comment) {
-  if(!SUPABASE_URL || SUPABASE_URL === "SUPABASE_URL_HERE") return null;
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/reviews`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${SUPABASE_KEY}`,
-        "Prefer": "return=minimal"
-      },
-      body: JSON.stringify({
-        event_id: eventId,
-        event_name: eventName,
-        rating,
-        comment,
-        created_at: new Date().toISOString()
-      })
+// ── Supabase Auth & DB ────────────────────────────────────────────────────────
+async function sbFetch(path, options={}) {
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Content-Type": "application/json",
+    ...options.headers
+  };
+  if (state.session?.access_token) {
+    headers["Authorization"] = `Bearer ${state.session.access_token}`;
+  } else {
+    headers["Authorization"] = `Bearer ${SUPABASE_KEY}`;
+  }
+  return fetch(`${SUPABASE_URL}${path}`, { ...options, headers });
+}
+
+async function signUp(email, password) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  return r.json();
+}
+
+async function signIn(email, password) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  return r.json();
+}
+
+async function signOut() {
+  await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${state.session?.access_token}` }
+  });
+  setState({ session: null, user: null });
+  showToast("Signed out");
+}
+
+async function getAttendance(eventId) {
+  const r = await sbFetch(`/rest/v1/attendance?event_id=eq.${encodeURIComponent(eventId)}&select=count`);
+  if (!r.ok) return 0;
+  const d = await r.json();
+  return d[0]?.count || 0;
+}
+
+async function getAttendanceCounts(eventIds) {
+  if (!eventIds.length) return {};
+  const ids = eventIds.map(id => `event_id.eq.${encodeURIComponent(id)}`).join(",");
+  const r = await sbFetch(`/rest/v1/attendance?or=(${ids})`);
+  if (!r.ok) return {};
+  const d = await r.json();
+  const counts = {};
+  d.forEach(row => {
+    counts[row.event_id] = (counts[row.event_id] || 0) + 1;
+  });
+  return counts;
+}
+
+async function toggleAttendance(eventId, eventName) {
+  const userId = state.user?.id;
+  if (!userId) {
+    setState({ authModal: "signin", authRedirect: eventId });
+    return;
+  }
+  const isGoing = state.going.has(eventId);
+  if (isGoing) {
+    await sbFetch(`/rest/v1/attendance?event_id=eq.${encodeURIComponent(eventId)}&user_id=eq.${userId}`, {
+      method: "DELETE"
     });
-    return res.ok;
-  } catch(e) { return false; }
+    const newGoing = new Set(state.going);
+    newGoing.delete(eventId);
+    const newCounts = { ...state.attendanceCounts };
+    newCounts[eventId] = Math.max(0, (newCounts[eventId] || 1) - 1);
+    setState({ going: newGoing, attendanceCounts: newCounts });
+    showToast("Removed from going");
+  } else {
+    await sbFetch(`/rest/v1/attendance`, {
+      method: "POST",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({ event_id: eventId, event_name: eventName, user_id: userId })
+    });
+    const newGoing = new Set(state.going);
+    newGoing.add(eventId);
+    const newCounts = { ...state.attendanceCounts };
+    newCounts[eventId] = (newCounts[eventId] || 0) + 1;
+    setState({ going: newGoing, attendanceCounts: newCounts });
+    showToast("✓ You're going!");
+  }
+}
+
+async function getUserGoing(userId) {
+  if (!userId) return new Set();
+  const r = await sbFetch(`/rest/v1/attendance?user_id=eq.${userId}&select=event_id`);
+  if (!r.ok) return new Set();
+  const d = await r.json();
+  return new Set(d.map(row => row.event_id));
+}
+
+async function submitReview(eventId, eventName, rating, comment) {
+  const r = await sbFetch(`/rest/v1/reviews`, {
+    method: "POST",
+    headers: { "Prefer": "return=minimal" },
+    body: JSON.stringify({ event_id: eventId, event_name: eventName, rating, comment, created_at: new Date().toISOString() })
+  });
+  return r.ok;
 }
 
 async function fetchReviews(eventId) {
-  if(!SUPABASE_URL || SUPABASE_URL === "SUPABASE_URL_HERE") return [];
-  try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/reviews?event_id=eq.${encodeURIComponent(eventId)}&order=created_at.desc&limit=10`,
-      { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
-    );
-    return res.ok ? await res.json() : [];
-  } catch(e) { return []; }
+  const r = await sbFetch(`/rest/v1/reviews?event_id=eq.${encodeURIComponent(eventId)}&order=created_at.desc&limit=5`);
+  return r.ok ? await r.json() : [];
 }
 
 // ── City lookup ───────────────────────────────────────────────────────────────
 const CITY_ZIP = {
-  // Virginia
   "virginia beach":{zip:"23462",city:"Virginia Beach",state:"VA",region:"VA"},
   "vb":{zip:"23462",city:"Virginia Beach",state:"VA",region:"VA"},
   "norfolk":{zip:"23510",city:"Norfolk",state:"VA",region:"VA"},
   "chesapeake":{zip:"23320",city:"Chesapeake",state:"VA",region:"VA"},
   "richmond":{zip:"23220",city:"Richmond",state:"VA",region:"VA"},
-  "roanoke":{zip:"24011",city:"Roanoke",state:"VA",region:"DEFAULT"},
-  "arlington":{zip:"22201",city:"Arlington",state:"VA",region:"DEFAULT"},
-  "alexandria":{zip:"22301",city:"Alexandria",state:"VA",region:"DEFAULT"},
-  // New York
   "new york":{zip:"10001",city:"New York",state:"NY",region:"NY"},
   "nyc":{zip:"10001",city:"New York",state:"NY",region:"NY"},
-  "manhattan":{zip:"10001",city:"Manhattan",state:"NY",region:"NY"},
-  "brooklyn":{zip:"11201",city:"Brooklyn",state:"NY",region:"NY"},
-  "bronx":{zip:"10451",city:"Bronx",state:"NY",region:"NY"},
-  "queens":{zip:"11101",city:"Queens",state:"NY",region:"NY"},
-  "staten island":{zip:"10301",city:"Staten Island",state:"NY",region:"NY"},
-  "buffalo":{zip:"14201",city:"Buffalo",state:"NY",region:"DEFAULT"},
-  "rochester":{zip:"14601",city:"Rochester",state:"NY",region:"DEFAULT"},
-  "albany":{zip:"12201",city:"Albany",state:"NY",region:"DEFAULT"},
-  "syracuse":{zip:"13201",city:"Syracuse",state:"NY",region:"DEFAULT"},
-  // California
   "los angeles":{zip:"90001",city:"Los Angeles",state:"CA",region:"CA"},
   "la":{zip:"90001",city:"Los Angeles",state:"CA",region:"CA"},
+  "chicago":{zip:"60601",city:"Chicago",state:"IL",region:"IL"},
+  "houston":{zip:"77001",city:"Houston",state:"TX",region:"TX"},
+  "miami":{zip:"33101",city:"Miami",state:"FL",region:"FL"},
+  "atlanta":{zip:"30301",city:"Atlanta",state:"GA",region:"GA"},
+  "seattle":{zip:"98101",city:"Seattle",state:"WA",region:"WA"},
+  "denver":{zip:"80201",city:"Denver",state:"CO",region:"CO"},
+  "phoenix":{zip:"85001",city:"Phoenix",state:"AZ",region:"AZ"},
+  "nashville":{zip:"37201",city:"Nashville",state:"TN",region:"TN"},
+  "new orleans":{zip:"70112",city:"New Orleans",state:"LA",region:"LA"},
+  "charlotte":{zip:"28201",city:"Charlotte",state:"NC",region:"NC"},
+  "san antonio":{zip:"78201",city:"San Antonio",state:"TX",region:"TX"},
   "san francisco":{zip:"94102",city:"San Francisco",state:"CA",region:"CA"},
   "sf":{zip:"94102",city:"San Francisco",state:"CA",region:"CA"},
-  "san diego":{zip:"92101",city:"San Diego",state:"CA",region:"CA"},
-  "san jose":{zip:"95101",city:"San Jose",state:"CA",region:"DEFAULT"},
-  "sacramento":{zip:"95814",city:"Sacramento",state:"CA",region:"DEFAULT"},
-  "fresno":{zip:"93701",city:"Fresno",state:"CA",region:"DEFAULT"},
-  "long beach":{zip:"90801",city:"Long Beach",state:"CA",region:"CA"},
-  "oakland":{zip:"94601",city:"Oakland",state:"CA",region:"CA"},
-  "anaheim":{zip:"92801",city:"Anaheim",state:"CA",region:"DEFAULT"},
-  "santa ana":{zip:"92701",city:"Santa Ana",state:"CA",region:"DEFAULT"},
-  "riverside":{zip:"92501",city:"Riverside",state:"CA",region:"DEFAULT"},
-  "bakersfield":{zip:"93301",city:"Bakersfield",state:"CA",region:"DEFAULT"},
-  "irvine":{zip:"92601",city:"Irvine",state:"CA",region:"DEFAULT"},
-  "beverly hills":{zip:"90210",city:"Beverly Hills",state:"CA",region:"CA"},
-  "santa monica":{zip:"90401",city:"Santa Monica",state:"CA",region:"CA"},
-  "pasadena":{zip:"91101",city:"Pasadena",state:"CA",region:"DEFAULT"},
-  // Texas
-  "houston":{zip:"77001",city:"Houston",state:"TX",region:"TX"},
+  "boston":{zip:"02101",city:"Boston",state:"MA",region:"MA"},
+  "philadelphia":{zip:"19101",city:"Philadelphia",state:"PA",region:"PA"},
+  "philly":{zip:"19101",city:"Philadelphia",state:"PA",region:"PA"},
   "dallas":{zip:"75201",city:"Dallas",state:"TX",region:"TX"},
   "austin":{zip:"78701",city:"Austin",state:"TX",region:"TX"},
-  "san antonio":{zip:"78201",city:"San Antonio",state:"TX",region:"TX"},
-  "fort worth":{zip:"76101",city:"Fort Worth",state:"TX",region:"TX"},
-  "el paso":{zip:"79901",city:"El Paso",state:"TX",region:"DEFAULT"},
-  "arlington tx":{zip:"76001",city:"Arlington",state:"TX",region:"TX"},
-  "corpus christi":{zip:"78401",city:"Corpus Christi",state:"TX",region:"DEFAULT"},
-  "plano":{zip:"75023",city:"Plano",state:"TX",region:"TX"},
-  "lubbock":{zip:"79401",city:"Lubbock",state:"TX",region:"DEFAULT"},
-  "laredo":{zip:"78041",city:"Laredo",state:"TX",region:"DEFAULT"},
-  "irving":{zip:"75061",city:"Irving",state:"TX",region:"TX"},
-  "waco":{zip:"76701",city:"Waco",state:"TX",region:"DEFAULT"},
-  "amarillo":{zip:"79101",city:"Amarillo",state:"TX",region:"DEFAULT"},
-  "garland":{zip:"75040",city:"Garland",state:"TX",region:"TX"},
-  // Florida
-  "miami":{zip:"33101",city:"Miami",state:"FL",region:"FL"},
-  "orlando":{zip:"32801",city:"Orlando",state:"FL",region:"FL"},
-  "tampa":{zip:"33601",city:"Tampa",state:"FL",region:"FL"},
-  "jacksonville":{zip:"32201",city:"Jacksonville",state:"FL",region:"FL"},
-  "st petersburg":{zip:"33701",city:"St. Petersburg",state:"FL",region:"FL"},
-  "hialeah":{zip:"33010",city:"Hialeah",state:"FL",region:"FL"},
-  "tallahassee":{zip:"32301",city:"Tallahassee",state:"FL",region:"DEFAULT"},
-  "fort lauderdale":{zip:"33301",city:"Fort Lauderdale",state:"FL",region:"FL"},
-  "fort myers":{zip:"33901",city:"Fort Myers",state:"FL",region:"DEFAULT"},
-  "gainesville":{zip:"32601",city:"Gainesville",state:"FL",region:"DEFAULT"},
-  "sarasota":{zip:"34230",city:"Sarasota",state:"FL",region:"DEFAULT"},
-  "pensacola":{zip:"32501",city:"Pensacola",state:"FL",region:"DEFAULT"},
-  "daytona beach":{zip:"32114",city:"Daytona Beach",state:"FL",region:"DEFAULT"},
-  "boca raton":{zip:"33427",city:"Boca Raton",state:"FL",region:"DEFAULT"},
-  "west palm beach":{zip:"33401",city:"West Palm Beach",state:"FL",region:"DEFAULT"},
-  "clearwater":{zip:"33755",city:"Clearwater",state:"FL",region:"FL"},
-  "miami beach":{zip:"33139",city:"Miami Beach",state:"FL",region:"FL"},
-  // Illinois
-  "chicago":{zip:"60601",city:"Chicago",state:"IL",region:"IL"},
-  "aurora":{zip:"60505",city:"Aurora",state:"IL",region:"IL"},
-  "naperville":{zip:"60540",city:"Naperville",state:"IL",region:"IL"},
-  "rockford":{zip:"61101",city:"Rockford",state:"IL",region:"DEFAULT"},
-  "joliet":{zip:"60431",city:"Joliet",state:"IL",region:"IL"},
-  "springfield il":{zip:"62701",city:"Springfield",state:"IL",region:"DEFAULT"},
-  "peoria":{zip:"61602",city:"Peoria",state:"IL",region:"DEFAULT"},
-  // Pennsylvania
-  "philadelphia":{zip:"19101",city:"Philadelphia",state:"PA",region:"DEFAULT"},
-  "philly":{zip:"19101",city:"Philadelphia",state:"PA",region:"DEFAULT"},
-  "pittsburgh":{zip:"15201",city:"Pittsburgh",state:"PA",region:"DEFAULT"},
-  "allentown":{zip:"18101",city:"Allentown",state:"PA",region:"DEFAULT"},
-  "erie":{zip:"16501",city:"Erie",state:"PA",region:"DEFAULT"},
-  "reading":{zip:"19601",city:"Reading",state:"PA",region:"DEFAULT"},
-  "scranton":{zip:"18503",city:"Scranton",state:"PA",region:"DEFAULT"},
-  "harrisburg":{zip:"17101",city:"Harrisburg",state:"PA",region:"DEFAULT"},
-  "franklin pa":{zip:"16323",city:"Franklin",state:"PA",region:"DEFAULT"},
-  "franklin":{zip:"16323",city:"Franklin",state:"PA",region:"DEFAULT"},
-  "oil city":{zip:"16301",city:"Oil City",state:"PA",region:"DEFAULT"},
-  "meadville":{zip:"16335",city:"Meadville",state:"PA",region:"DEFAULT"},
-  "warren pa":{zip:"16365",city:"Warren",state:"PA",region:"DEFAULT"},
-  // Georgia
-  "atlanta":{zip:"30301",city:"Atlanta",state:"GA",region:"GA"},
-  "savannah":{zip:"31401",city:"Savannah",state:"GA",region:"DEFAULT"},
-  "augusta":{zip:"30901",city:"Augusta",state:"GA",region:"DEFAULT"},
-  "columbus ga":{zip:"31901",city:"Columbus",state:"GA",region:"DEFAULT"},
-  "macon":{zip:"31201",city:"Macon",state:"GA",region:"DEFAULT"},
-  // Washington State
-  "seattle":{zip:"98101",city:"Seattle",state:"WA",region:"WA"},
-  "spokane":{zip:"99201",city:"Spokane",state:"WA",region:"DEFAULT"},
-  "tacoma":{zip:"98401",city:"Tacoma",state:"WA",region:"WA"},
-  "bellevue":{zip:"98004",city:"Bellevue",state:"WA",region:"WA"},
-  "olympia":{zip:"98501",city:"Olympia",state:"WA",region:"DEFAULT"},
-  // Colorado
-  "denver":{zip:"80201",city:"Denver",state:"CO",region:"CO"},
-  "colorado springs":{zip:"80901",city:"Colorado Springs",state:"CO",region:"DEFAULT"},
-  "aurora co":{zip:"80010",city:"Aurora",state:"CO",region:"CO"},
-  "boulder":{zip:"80301",city:"Boulder",state:"CO",region:"CO"},
-  "fort collins":{zip:"80521",city:"Fort Collins",state:"CO",region:"DEFAULT"},
-  // Arizona
-  "phoenix":{zip:"85001",city:"Phoenix",state:"AZ",region:"AZ"},
-  "tucson":{zip:"85701",city:"Tucson",state:"AZ",region:"DEFAULT"},
-  "scottsdale":{zip:"85251",city:"Scottsdale",state:"AZ",region:"AZ"},
-  "mesa":{zip:"85201",city:"Mesa",state:"AZ",region:"AZ"},
-  "chandler":{zip:"85224",city:"Chandler",state:"AZ",region:"AZ"},
-  "tempe":{zip:"85281",city:"Tempe",state:"AZ",region:"AZ"},
-  "glendale az":{zip:"85301",city:"Glendale",state:"AZ",region:"AZ"},
-  // Tennessee
-  "nashville":{zip:"37201",city:"Nashville",state:"TN",region:"TN"},
-  "memphis":{zip:"38101",city:"Memphis",state:"TN",region:"TN"},
-  "knoxville":{zip:"37901",city:"Knoxville",state:"TN",region:"DEFAULT"},
-  "chattanooga":{zip:"37401",city:"Chattanooga",state:"TN",region:"DEFAULT"},
-  "clarksville":{zip:"37040",city:"Clarksville",state:"TN",region:"DEFAULT"},
-  // North Carolina
-  "charlotte":{zip:"28201",city:"Charlotte",state:"NC",region:"NC"},
-  "raleigh":{zip:"27601",city:"Raleigh",state:"NC",region:"NC"},
-  "greensboro":{zip:"27401",city:"Greensboro",state:"NC",region:"DEFAULT"},
-  "durham":{zip:"27701",city:"Durham",state:"NC",region:"NC"},
-  "winston-salem":{zip:"27101",city:"Winston-Salem",state:"NC",region:"DEFAULT"},
-  "fayetteville nc":{zip:"28301",city:"Fayetteville",state:"NC",region:"DEFAULT"},
-  "chapel hill":{zip:"27514",city:"Chapel Hill",state:"NC",region:"NC"},
-  "asheville":{zip:"28801",city:"Asheville",state:"NC",region:"DEFAULT"},
-  // Louisiana
-  "new orleans":{zip:"70112",city:"New Orleans",state:"LA",region:"LA"},
-  "baton rouge":{zip:"70801",city:"Baton Rouge",state:"LA",region:"DEFAULT"},
-  "shreveport":{zip:"71101",city:"Shreveport",state:"LA",region:"DEFAULT"},
-  "lafayette la":{zip:"70501",city:"Lafayette",state:"LA",region:"DEFAULT"},
-  // Massachusetts
-  "boston":{zip:"02101",city:"Boston",state:"MA",region:"DEFAULT"},
-  "worcester":{zip:"01601",city:"Worcester",state:"MA",region:"DEFAULT"},
-  "springfield ma":{zip:"01101",city:"Springfield",state:"MA",region:"DEFAULT"},
-  "cambridge":{zip:"02139",city:"Cambridge",state:"MA",region:"DEFAULT"},
-  "lowell":{zip:"01851",city:"Lowell",state:"MA",region:"DEFAULT"},
-  // Maryland
-  "baltimore":{zip:"21201",city:"Baltimore",state:"MD",region:"DEFAULT"},
-  "columbia md":{zip:"21044",city:"Columbia",state:"MD",region:"DEFAULT"},
-  "annapolis":{zip:"21401",city:"Annapolis",state:"MD",region:"DEFAULT"},
-  // Ohio
-  "columbus":{zip:"43201",city:"Columbus",state:"OH",region:"OH"},
-  "cleveland":{zip:"44101",city:"Cleveland",state:"OH",region:"DEFAULT"},
-  "cincinnati":{zip:"45201",city:"Cincinnati",state:"OH",region:"DEFAULT"},
-  "toledo":{zip:"43601",city:"Toledo",state:"OH",region:"DEFAULT"},
-  "akron":{zip:"44301",city:"Akron",state:"OH",region:"DEFAULT"},
-  "dayton":{zip:"45401",city:"Dayton",state:"OH",region:"DEFAULT"},
-  // Michigan
-  "detroit":{zip:"48201",city:"Detroit",state:"MI",region:"DEFAULT"},
-  "grand rapids":{zip:"49501",city:"Grand Rapids",state:"MI",region:"DEFAULT"},
-  "warren mi":{zip:"48088",city:"Warren",state:"MI",region:"DEFAULT"},
-  "lansing":{zip:"48901",city:"Lansing",state:"MI",region:"DEFAULT"},
-  "ann arbor":{zip:"48103",city:"Ann Arbor",state:"MI",region:"DEFAULT"},
-  // Nevada
-  "las vegas":{zip:"89101",city:"Las Vegas",state:"NV",region:"NV"},
-  "henderson":{zip:"89002",city:"Henderson",state:"NV",region:"NV"},
-  "reno":{zip:"89501",city:"Reno",state:"NV",region:"DEFAULT"},
-  "north las vegas":{zip:"89030",city:"North Las Vegas",state:"NV",region:"NV"},
-  // Oregon
   "portland":{zip:"97201",city:"Portland",state:"OR",region:"OR"},
-  "eugene":{zip:"97401",city:"Eugene",state:"OR",region:"DEFAULT"},
-  "salem or":{zip:"97301",city:"Salem",state:"OR",region:"DEFAULT"},
-  "bend":{zip:"97701",city:"Bend",state:"OR",region:"DEFAULT"},
-  // Wisconsin
-  "milwaukee":{zip:"53201",city:"Milwaukee",state:"WI",region:"WI"},
-  "madison":{zip:"53701",city:"Madison",state:"WI",region:"DEFAULT"},
-  "green bay":{zip:"54301",city:"Green Bay",state:"WI",region:"DEFAULT"},
-  // Minnesota
+  "las vegas":{zip:"89101",city:"Las Vegas",state:"NV",region:"NV"},
   "minneapolis":{zip:"55401",city:"Minneapolis",state:"MN",region:"MN"},
-  "saint paul":{zip:"55101",city:"Saint Paul",state:"MN",region:"MN"},
-  "st paul":{zip:"55101",city:"Saint Paul",state:"MN",region:"MN"},
-  "rochester mn":{zip:"55901",city:"Rochester",state:"MN",region:"DEFAULT"},
-  "duluth":{zip:"55801",city:"Duluth",state:"MN",region:"DEFAULT"},
-  // Missouri
+  "detroit":{zip:"48201",city:"Detroit",state:"MI",region:"MI"},
+  "baltimore":{zip:"21201",city:"Baltimore",state:"MD",region:"MD"},
+  "tampa":{zip:"33601",city:"Tampa",state:"FL",region:"FL"},
+  "orlando":{zip:"32801",city:"Orlando",state:"FL",region:"FL"},
+  "san diego":{zip:"92101",city:"San Diego",state:"CA",region:"CA"},
   "kansas city":{zip:"64101",city:"Kansas City",state:"MO",region:"MO"},
-  "st louis":{zip:"63101",city:"St. Louis",state:"MO",region:"DEFAULT"},
-  "saint louis":{zip:"63101",city:"St. Louis",state:"MO",region:"DEFAULT"},
-  "springfield mo":{zip:"65801",city:"Springfield",state:"MO",region:"DEFAULT"},
-  // Indiana
-  "indianapolis":{zip:"46201",city:"Indianapolis",state:"IN",region:"DEFAULT"},
-  "fort wayne":{zip:"46801",city:"Fort Wayne",state:"IN",region:"DEFAULT"},
-  "evansville":{zip:"47701",city:"Evansville",state:"IN",region:"DEFAULT"},
-  "south bend":{zip:"46601",city:"South Bend",state:"IN",region:"DEFAULT"},
-  // Kentucky
-  "louisville":{zip:"40201",city:"Louisville",state:"KY",region:"DEFAULT"},
-  "lexington":{zip:"40501",city:"Lexington",state:"KY",region:"DEFAULT"},
-  "bowling green":{zip:"42101",city:"Bowling Green",state:"KY",region:"DEFAULT"},
-  // South Carolina
-  "columbia sc":{zip:"29201",city:"Columbia",state:"SC",region:"DEFAULT"},
-  "charleston sc":{zip:"29401",city:"Charleston",state:"SC",region:"DEFAULT"},
-  "greenville sc":{zip:"29601",city:"Greenville",state:"SC",region:"DEFAULT"},
-  "myrtle beach":{zip:"29577",city:"Myrtle Beach",state:"SC",region:"DEFAULT"},
-  // Alabama
-  "birmingham":{zip:"35201",city:"Birmingham",state:"AL",region:"DEFAULT"},
-  "montgomery":{zip:"36101",city:"Montgomery",state:"AL",region:"DEFAULT"},
-  "huntsville":{zip:"35801",city:"Huntsville",state:"AL",region:"DEFAULT"},
-  "mobile":{zip:"36601",city:"Mobile",state:"AL",region:"DEFAULT"},
-  // Oklahoma
-  "oklahoma city":{zip:"73101",city:"Oklahoma City",state:"OK",region:"DEFAULT"},
-  "tulsa":{zip:"74101",city:"Tulsa",state:"OK",region:"DEFAULT"},
-  // Iowa
-  "des moines":{zip:"50301",city:"Des Moines",state:"IA",region:"DEFAULT"},
-  "cedar rapids":{zip:"52401",city:"Cedar Rapids",state:"IA",region:"DEFAULT"},
-  // Kansas
-  "wichita":{zip:"67201",city:"Wichita",state:"KS",region:"DEFAULT"},
-  "topeka":{zip:"66601",city:"Topeka",state:"KS",region:"DEFAULT"},
-  // Arkansas
-  "little rock":{zip:"72201",city:"Little Rock",state:"AR",region:"DEFAULT"},
-  "fayetteville ar":{zip:"72701",city:"Fayetteville",state:"AR",region:"DEFAULT"},
-  // Mississippi
-  "jackson ms":{zip:"39201",city:"Jackson",state:"MS",region:"DEFAULT"},
-  "biloxi":{zip:"39530",city:"Biloxi",state:"MS",region:"DEFAULT"},
-  // Nebraska
-  "omaha":{zip:"68101",city:"Omaha",state:"NE",region:"DEFAULT"},
-  "lincoln ne":{zip:"68501",city:"Lincoln",state:"NE",region:"DEFAULT"},
-  // Utah
+  "columbus":{zip:"43201",city:"Columbus",state:"OH",region:"OH"},
+  "memphis":{zip:"38101",city:"Memphis",state:"TN",region:"TN"},
+  "raleigh":{zip:"27601",city:"Raleigh",state:"NC",region:"NC"},
   "salt lake city":{zip:"84101",city:"Salt Lake City",state:"UT",region:"UT"},
   "slc":{zip:"84101",city:"Salt Lake City",state:"UT",region:"UT"},
-  "provo":{zip:"84601",city:"Provo",state:"UT",region:"DEFAULT"},
-  "ogden":{zip:"84401",city:"Ogden",state:"UT",region:"DEFAULT"},
-  // New Mexico
-  "albuquerque":{zip:"87101",city:"Albuquerque",state:"NM",region:"DEFAULT"},
-  "santa fe":{zip:"87501",city:"Santa Fe",state:"NM",region:"DEFAULT"},
-  // Hawaii
-  "honolulu":{zip:"96801",city:"Honolulu",state:"HI",region:"DEFAULT"},
-  // Alaska
-  "anchorage":{zip:"99501",city:"Anchorage",state:"AK",region:"DEFAULT"},
-  // Idaho
-  "boise":{zip:"83701",city:"Boise",state:"ID",region:"DEFAULT"},
-  // Montana
-  "billings":{zip:"59101",city:"Billings",state:"MT",region:"DEFAULT"},
-  "missoula":{zip:"59801",city:"Missoula",state:"MT",region:"DEFAULT"},
-  // Wyoming
-  "cheyenne":{zip:"82001",city:"Cheyenne",state:"WY",region:"DEFAULT"},
-  // North Dakota
-  "fargo":{zip:"58101",city:"Fargo",state:"ND",region:"DEFAULT"},
-  // South Dakota
-  "sioux falls":{zip:"57101",city:"Sioux Falls",state:"SD",region:"DEFAULT"},
-  // West Virginia
-  "charleston wv":{zip:"25301",city:"Charleston",state:"WV",region:"DEFAULT"},
-  "huntington wv":{zip:"25701",city:"Huntington",state:"WV",region:"DEFAULT"},
-  // Connecticut
-  "bridgeport":{zip:"06601",city:"Bridgeport",state:"CT",region:"DEFAULT"},
-  "new haven":{zip:"06501",city:"New Haven",state:"CT",region:"DEFAULT"},
-  "hartford":{zip:"06101",city:"Hartford",state:"CT",region:"DEFAULT"},
-  // Rhode Island
-  "providence":{zip:"02901",city:"Providence",state:"RI",region:"DEFAULT"},
-  // New Hampshire
-  "manchester nh":{zip:"03101",city:"Manchester",state:"NH",region:"DEFAULT"},
-  "concord nh":{zip:"03301",city:"Concord",state:"NH",region:"DEFAULT"},
-  // Vermont
-  "burlington vt":{zip:"05401",city:"Burlington",state:"VT",region:"DEFAULT"},
-  // Maine
-  "portland me":{zip:"04101",city:"Portland",state:"ME",region:"DEFAULT"},
-  "bangor":{zip:"04401",city:"Bangor",state:"ME",region:"DEFAULT"},
-  // New Jersey
-  "newark":{zip:"07101",city:"Newark",state:"NJ",region:"DEFAULT"},
-  "jersey city":{zip:"07301",city:"Jersey City",state:"NJ",region:"DEFAULT"},
-  "paterson":{zip:"07501",city:"Paterson",state:"NJ",region:"DEFAULT"},
-  "trenton":{zip:"08601",city:"Trenton",state:"NJ",region:"DEFAULT"},
-  "atlantic city":{zip:"08401",city:"Atlantic City",state:"NJ",region:"DEFAULT"},
-  // Delaware
-  "wilmington de":{zip:"19801",city:"Wilmington",state:"DE",region:"DEFAULT"},
-  // Washington DC
-  "washington dc":{zip:"20001",city:"Washington",state:"DC",region:"DEFAULT"},
-  "dc":{zip:"20001",city:"Washington",state:"DC",region:"DEFAULT"},
-  // Additional popular cities
-  "pittsburgh":{zip:"15201",city:"Pittsburgh",state:"PA",region:"DEFAULT"},
-  "buffalo":{zip:"14201",city:"Buffalo",state:"NY",region:"DEFAULT"},
+  "milwaukee":{zip:"53201",city:"Milwaukee",state:"WI",region:"WI"},
+  "jacksonville":{zip:"32201",city:"Jacksonville",state:"FL",region:"FL"},
+  "tucson":{zip:"85701",city:"Tucson",state:"AZ",region:"AZ"},
+  "marana":{zip:"85653",city:"Marana",state:"AZ",region:"AZ"},
+  "pittsburgh":{zip:"15201",city:"Pittsburgh",state:"PA",region:"PA"},
+  "franklin":{zip:"16323",city:"Franklin",state:"PA",region:"PA"},
+  "franklin pa":{zip:"16323",city:"Franklin",state:"PA",region:"PA"},
+  "savannah":{zip:"31401",city:"Savannah",state:"GA",region:"GA"},
+  "louisville":{zip:"40201",city:"Louisville",state:"KY",region:"KY"},
+  "indianapolis":{zip:"46201",city:"Indianapolis",state:"IN",region:"IN"},
+  "cincinnati":{zip:"45201",city:"Cincinnati",state:"OH",region:"OH"},
+  "cleveland":{zip:"44101",city:"Cleveland",state:"OH",region:"OH"},
+  "st louis":{zip:"63101",city:"St. Louis",state:"MO",region:"MO"},
+  "saint louis":{zip:"63101",city:"St. Louis",state:"MO",region:"MO"},
+  "sacramento":{zip:"95814",city:"Sacramento",state:"CA",region:"CA"},
+  "albuquerque":{zip:"87101",city:"Albuquerque",state:"NM",region:"NM"},
+  "omaha":{zip:"68101",city:"Omaha",state:"NE",region:"NE"},
+  "colorado springs":{zip:"80901",city:"Colorado Springs",state:"CO",region:"CO"},
+  "el paso":{zip:"79901",city:"El Paso",state:"TX",region:"TX"},
+  "fort worth":{zip:"76101",city:"Fort Worth",state:"TX",region:"TX"},
+  "washington dc":{zip:"20001",city:"Washington",state:"DC",region:"DC"},
+  "dc":{zip:"20001",city:"Washington",state:"DC",region:"DC"},
+  "boise":{zip:"83701",city:"Boise",state:"ID",region:"ID"},
+  "honolulu":{zip:"96801",city:"Honolulu",state:"HI",region:"HI"},
+  "anchorage":{zip:"99501",city:"Anchorage",state:"AK",region:"AK"},
+  "charleston sc":{zip:"29401",city:"Charleston",state:"SC",region:"SC"},
+  "myrtle beach":{zip:"29577",city:"Myrtle Beach",state:"SC",region:"SC"},
+  "asheville":{zip:"28801",city:"Asheville",state:"NC",region:"NC"},
+  "knoxville":{zip:"37901",city:"Knoxville",state:"TN",region:"TN"},
+  "chattanooga":{zip:"37401",city:"Chattanooga",state:"TN",region:"TN"},
+  "baton rouge":{zip:"70801",city:"Baton Rouge",state:"LA",region:"LA"},
+  "birmingham":{zip:"35201",city:"Birmingham",state:"AL",region:"AL"},
+  "little rock":{zip:"72201",city:"Little Rock",state:"AR",region:"AR"},
+  "fargo":{zip:"58101",city:"Fargo",state:"ND",region:"ND"},
+  "sioux falls":{zip:"57101",city:"Sioux Falls",state:"SD",region:"SD"},
+  "des moines":{zip:"50301",city:"Des Moines",state:"IA",region:"IA"},
+  "wichita":{zip:"67201",city:"Wichita",state:"KS",region:"KS"},
+  "oklahoma city":{zip:"73101",city:"Oklahoma City",state:"OK",region:"OK"},
+  "tulsa":{zip:"74101",city:"Tulsa",state:"OK",region:"OK"},
+  "spokane":{zip:"99201",city:"Spokane",state:"WA",region:"WA"},
+  "tacoma":{zip:"98401",city:"Tacoma",state:"WA",region:"WA"},
+  "eugene":{zip:"97401",city:"Eugene",state:"OR",region:"OR"},
+  "bend":{zip:"97701",city:"Bend",state:"OR",region:"OR"},
+  "madison":{zip:"53701",city:"Madison",state:"WI",region:"WI"},
+  "green bay":{zip:"54301",city:"Green Bay",state:"WI",region:"WI"},
+  "durham":{zip:"27701",city:"Durham",state:"NC",region:"NC"},
+  "greensboro":{zip:"27401",city:"Greensboro",state:"NC",region:"NC"},
+  "winston-salem":{zip:"27101",city:"Winston-Salem",state:"NC",region:"NC"},
+  "fort lauderdale":{zip:"33301",city:"Fort Lauderdale",state:"FL",region:"FL"},
+  "fort myers":{zip:"33901",city:"Fort Myers",state:"FL",region:"FL"},
+  "daytona beach":{zip:"32114",city:"Daytona Beach",state:"FL",region:"FL"},
+  "west palm beach":{zip:"33401",city:"West Palm Beach",state:"FL",region:"FL"},
+  "clearwater":{zip:"33755",city:"Clearwater",state:"FL",region:"FL"},
+  "pensacola":{zip:"32501",city:"Pensacola",state:"FL",region:"FL"},
+  "gainesville":{zip:"32601",city:"Gainesville",state:"FL",region:"FL"},
+  "sarasota":{zip:"34230",city:"Sarasota",state:"FL",region:"FL"},
 };
 
 function resolveSearch(input){
@@ -362,21 +270,21 @@ function getSuggestions(input){
 
 // ── Photos ────────────────────────────────────────────────────────────────────
 const TYPE_PHOTOS={
-  Festival:["https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80","https://images.unsplash.com/photo-1506157786151-b8491531f063?w=600&q=80"],
-  Market:["https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=600&q=80","https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&q=80"],
-  Brewery:["https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=600&q=80","https://images.unsplash.com/photo-1566633806327-68e152aaf26d?w=600&q=80"],
-  Kids:["https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&q=80","https://images.unsplash.com/photo-1471286174890-9c112ffca5b4?w=600&q=80"],
-  Music:["https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=600&q=80","https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&q=80"],
-  Community:["https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=600&q=80","https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=600&q=80"],
-  Arts:["https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600&q=80","https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&q=80"],
-  Food:["https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80","https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=80"],
-  Nightlife:["https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=600&q=80","https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&q=80"],
-  Sports:["https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=600&q=80","https://images.unsplash.com/photo-1535131749006-b7f58c99034b?w=600&q=80"],
-  Outdoor:["https://images.unsplash.com/photo-1551632811-561732d1e306?w=600&q=80","https://images.unsplash.com/photo-1533240332313-0db49b459ad6?w=600&q=80"],
+  Festival:["https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80"],
+  Market:["https://images.unsplash.com/photo-1488459716781-31db52582fe9?w=600&q=80"],
+  Brewery:["https://images.unsplash.com/photo-1558642452-9d2a7deb7f62?w=600&q=80"],
+  Kids:["https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600&q=80"],
+  Music:["https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=600&q=80"],
+  Community:["https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=600&q=80"],
+  Arts:["https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600&q=80"],
+  Food:["https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80"],
+  Nightlife:["https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2?w=600&q=80"],
+  Sports:["https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=600&q=80"],
+  Outdoor:["https://images.unsplash.com/photo-1551632811-561732d1e306?w=600&q=80"],
   Carnival:["https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80"],
   Other:["https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&q=80"],
 };
-function getPhoto(type,id){const p=TYPE_PHOTOS[type]||TYPE_PHOTOS.Other;return p[parseInt(id)%p.length];}
+function getPhoto(type,id){const p=TYPE_PHOTOS[type]||TYPE_PHOTOS.Other;return p[parseInt(id||0)%p.length];}
 
 // ── Region ────────────────────────────────────────────────────────────────────
 function getRegionInfo(zip){
@@ -390,12 +298,16 @@ function getRegionInfo(zip){
   if(z>=30000&&z<=31999)return{city:"Atlanta",state:"GA",region:"GA"};
   if(z>=98000&&z<=98199)return{city:"Seattle",state:"WA",region:"WA"};
   if(z>=80000&&z<=80299)return{city:"Denver",state:"CO",region:"CO"};
-  if(z>=85000&&z<=85099)return{city:"Phoenix",state:"AZ",region:"AZ"};
+  if(z>=85000&&z<=86999)return{city:"Phoenix/Tucson",state:"AZ",region:"AZ"};
+  if(z>=37000&&z<=38599)return{city:"Nashville",state:"TN",region:"TN"};
+  if(z>=70000&&z<=71199)return{city:"New Orleans",state:"LA",region:"LA"};
+  if(z>=28000&&z<=28999)return{city:"Charlotte",state:"NC",region:"NC"};
+  if(z>=94000&&z<=94999)return{city:"San Francisco",state:"CA",region:"CA"};
   return{city:"your area",state:"",region:"DEFAULT"};
 }
+
 function latLngToRegion(lat,lng){
-  // Match lat/lng to nearest city using bounding boxes
-  const cities = [
+  const cities=[
     {city:"Virginia Beach",state:"VA",region:"VA",zip:"23462",lat1:36.6,lat2:37.0,lng1:-76.2,lng2:-75.9},
     {city:"Norfolk",state:"VA",region:"VA",zip:"23510",lat1:36.8,lat2:37.0,lng1:-76.4,lng2:-76.1},
     {city:"Richmond",state:"VA",region:"VA",zip:"23220",lat1:37.4,lat2:37.7,lng1:-77.7,lng2:-77.2},
@@ -404,99 +316,42 @@ function latLngToRegion(lat,lng){
     {city:"Chicago",state:"IL",region:"IL",zip:"60601",lat1:41.6,lat2:42.1,lng1:-88.0,lng2:-87.5},
     {city:"Houston",state:"TX",region:"TX",zip:"77001",lat1:29.5,lat2:30.1,lng1:-95.8,lng2:-95.0},
     {city:"Phoenix",state:"AZ",region:"AZ",zip:"85001",lat1:33.2,lat2:33.9,lng1:-112.4,lng2:-111.7},
-    {city:"Philadelphia",state:"PA",region:"DEFAULT",zip:"19101",lat1:39.8,lat2:40.1,lng1:-75.3,lng2:-74.9},
+    {city:"Tucson",state:"AZ",region:"AZ",zip:"85701",lat1:31.9,lat2:32.4,lng1:-111.2,lng2:-110.7},
+    {city:"Marana",state:"AZ",region:"AZ",zip:"85653",lat1:32.3,lat2:32.5,lng1:-111.3,lng2:-111.1},
+    {city:"Philadelphia",state:"PA",region:"PA",zip:"19101",lat1:39.8,lat2:40.1,lng1:-75.3,lng2:-74.9},
     {city:"San Antonio",state:"TX",region:"TX",zip:"78201",lat1:29.2,lat2:29.7,lng1:-98.7,lng2:-98.2},
     {city:"San Diego",state:"CA",region:"CA",zip:"92101",lat1:32.5,lat2:33.0,lng1:-117.3,lng2:-116.9},
     {city:"Dallas",state:"TX",region:"TX",zip:"75201",lat1:32.6,lat2:33.0,lng1:-97.0,lng2:-96.5},
-    {city:"San Jose",state:"CA",region:"DEFAULT",zip:"95101",lat1:37.1,lat2:37.5,lng1:-122.1,lng2:-121.6},
     {city:"Austin",state:"TX",region:"TX",zip:"78701",lat1:30.0,lat2:30.5,lng1:-97.9,lng2:-97.5},
     {city:"Jacksonville",state:"FL",region:"FL",zip:"32201",lat1:30.0,lat2:30.5,lng1:-82.0,lng2:-81.4},
     {city:"Fort Worth",state:"TX",region:"TX",zip:"76101",lat1:32.6,lat2:33.0,lng1:-97.5,lng2:-97.0},
     {city:"Columbus",state:"OH",region:"OH",zip:"43201",lat1:39.8,lat2:40.2,lng1:-83.2,lng2:-82.7},
     {city:"Charlotte",state:"NC",region:"NC",zip:"28201",lat1:35.0,lat2:35.4,lng1:-81.0,lng2:-80.6},
-    {city:"Indianapolis",state:"IN",region:"DEFAULT",zip:"46201",lat1:39.6,lat2:40.0,lng1:-86.4,lng2:-85.9},
+    {city:"Indianapolis",state:"IN",region:"IN",zip:"46201",lat1:39.6,lat2:40.0,lng1:-86.4,lng2:-85.9},
     {city:"San Francisco",state:"CA",region:"CA",zip:"94102",lat1:37.6,lat2:37.9,lng1:-122.6,lng2:-122.3},
     {city:"Seattle",state:"WA",region:"WA",zip:"98101",lat1:47.4,lat2:47.8,lng1:-122.5,lng2:-122.1},
     {city:"Denver",state:"CO",region:"CO",zip:"80201",lat1:39.5,lat2:39.9,lng1:-105.2,lng2:-104.7},
     {city:"Nashville",state:"TN",region:"TN",zip:"37201",lat1:35.9,lat2:36.4,lng1:-87.1,lng2:-86.5},
-    {city:"Oklahoma City",state:"OK",region:"DEFAULT",zip:"73101",lat1:35.3,lat2:35.7,lng1:-97.7,lng2:-97.3},
-    {city:"El Paso",state:"TX",region:"DEFAULT",zip:"79901",lat1:31.6,lat2:32.0,lng1:-106.6,lng2:-106.2},
-    {city:"Washington",state:"DC",region:"DEFAULT",zip:"20001",lat1:38.7,lat2:39.0,lng1:-77.2,lng2:-76.8},
+    {city:"Washington",state:"DC",region:"DC",zip:"20001",lat1:38.7,lat2:39.0,lng1:-77.2,lng2:-76.8},
     {city:"Las Vegas",state:"NV",region:"NV",zip:"89101",lat1:36.0,lat2:36.4,lng1:-115.4,lng2:-114.9},
-    {city:"Louisville",state:"KY",region:"DEFAULT",zip:"40201",lat1:38.0,lat2:38.4,lng1:-85.9,lng2:-85.5},
+    {city:"Louisville",state:"KY",region:"KY",zip:"40201",lat1:38.0,lat2:38.4,lng1:-85.9,lng2:-85.5},
     {city:"Memphis",state:"TN",region:"TN",zip:"38101",lat1:34.9,lat2:35.3,lng1:-90.2,lng2:-89.7},
     {city:"Portland",state:"OR",region:"OR",zip:"97201",lat1:45.4,lat2:45.7,lng1:-122.9,lng2:-122.4},
-    {city:"Baltimore",state:"MD",region:"DEFAULT",zip:"21201",lat1:39.1,lat2:39.4,lng1:-76.8,lng2:-76.4},
+    {city:"Baltimore",state:"MD",region:"MD",zip:"21201",lat1:39.1,lat2:39.4,lng1:-76.8,lng2:-76.4},
     {city:"Milwaukee",state:"WI",region:"WI",zip:"53201",lat1:42.9,lat2:43.2,lng1:-88.1,lng2:-87.8},
-    {city:"Albuquerque",state:"NM",region:"DEFAULT",zip:"87101",lat1:34.9,lat2:35.3,lng1:-106.8,lng2:-106.4},
-    {city:"Tucson",state:"AZ",region:"DEFAULT",zip:"85701",lat1:31.9,lat2:32.4,lng1:-111.2,lng2:-110.7},
-    {city:"Fresno",state:"CA",region:"DEFAULT",zip:"93701",lat1:36.6,lat2:37.0,lng1:-119.9,lng2:-119.5},
-    {city:"Sacramento",state:"CA",region:"DEFAULT",zip:"95814",lat1:38.4,lat2:38.7,lng1:-121.6,lng2:-121.3},
-    {city:"Mesa",state:"AZ",region:"AZ",zip:"85201",lat1:33.2,lat2:33.6,lng1:-112.0,lng2:-111.5},
-    {city:"Kansas City",state:"MO",region:"MO",zip:"64101",lat1:38.9,lat2:39.3,lng1:-94.8,lng2:-94.3},
-    {city:"Atlanta",state:"GA",region:"GA",zip:"30301",lat1:33.5,lat2:34.0,lng1:-84.6,lng2:-84.1},
-    {city:"Omaha",state:"NE",region:"DEFAULT",zip:"68101",lat1:41.1,lat2:41.4,lng1:-96.3,lng2:-95.8},
-    {city:"Colorado Springs",state:"CO",region:"DEFAULT",zip:"80901",lat1:38.7,lat2:39.1,lng1:-104.9,lng2:-104.5},
-    {city:"Raleigh",state:"NC",region:"NC",zip:"27601",lat1:35.6,lat2:36.0,lng1:-78.9,lng2:-78.4},
-    {city:"Long Beach",state:"CA",region:"CA",zip:"90801",lat1:33.7,lat2:33.9,lng1:-118.3,lng2:-117.9},
-    {city:"Virginia Beach",state:"VA",region:"VA",zip:"23462",lat1:36.6,lat2:36.9,lng1:-76.2,lng2:-75.9},
+    {city:"Albuquerque",state:"NM",region:"NM",zip:"87101",lat1:34.9,lat2:35.3,lng1:-106.8,lng2:-106.4},
     {city:"Minneapolis",state:"MN",region:"MN",zip:"55401",lat1:44.8,lat2:45.1,lng1:-93.5,lng2:-93.0},
     {city:"Tampa",state:"FL",region:"FL",zip:"33601",lat1:27.8,lat2:28.1,lng1:-82.7,lng2:-82.3},
     {city:"New Orleans",state:"LA",region:"LA",zip:"70112",lat1:29.8,lat2:30.1,lng1:-90.3,lng2:-89.9},
-    {city:"Arlington",state:"TX",region:"TX",zip:"76001",lat1:32.6,lat2:32.8,lng1:-97.2,lng2:-97.0},
-    {city:"Wichita",state:"KS",region:"DEFAULT",zip:"67201",lat1:37.5,lat2:37.9,lng1:-97.6,lng2:-97.1},
-    {city:"Bakersfield",state:"CA",region:"DEFAULT",zip:"93301",lat1:35.2,lat2:35.6,lng1:-119.2,lng2:-118.8},
-    {city:"Aurora",state:"CO",region:"CO",zip:"80010",lat1:39.6,lat2:39.9,lng1:-104.9,lng2:-104.6},
-    {city:"Anaheim",state:"CA",region:"DEFAULT",zip:"92801",lat1:33.7,lat2:34.0,lng1:-118.0,lng2:-117.7},
-    {city:"Santa Ana",state:"CA",region:"DEFAULT",zip:"92701",lat1:33.6,lat2:33.9,lng1:-117.9,lng2:-117.7},
-    {city:"Corpus Christi",state:"TX",region:"DEFAULT",zip:"78401",lat1:27.6,lat2:28.0,lng1:-97.6,lng2:-97.2},
-    {city:"Riverside",state:"CA",region:"DEFAULT",zip:"92501",lat1:33.8,lat2:34.1,lng1:-117.6,lng2:-117.2},
-    {city:"St. Louis",state:"MO",region:"DEFAULT",zip:"63101",lat1:38.4,lat2:38.8,lng1:-90.5,lng2:-90.1},
-    {city:"Lexington",state:"KY",region:"DEFAULT",zip:"40501",lat1:37.9,lat2:38.2,lng1:-84.7,lng2:-84.3},
-    {city:"Pittsburgh",state:"PA",region:"DEFAULT",zip:"15201",lat1:40.3,lat2:40.6,lng1:-80.2,lng2:-79.8},
-    {city:"Stockton",state:"CA",region:"DEFAULT",zip:"95201",lat1:37.8,lat2:38.1,lng1:-121.5,lng2:-121.1},
-    {city:"Anchorage",state:"AK",region:"DEFAULT",zip:"99501",lat1:61.0,lat2:61.4,lng1:-150.2,lng2:-149.5},
-    {city:"Cincinnati",state:"OH",region:"DEFAULT",zip:"45201",lat1:39.0,lat2:39.3,lng1:-84.7,lng2:-84.3},
-    {city:"Henderson",state:"NV",region:"NV",zip:"89002",lat1:35.8,lat2:36.1,lng1:-115.2,lng2:-114.9},
-    {city:"Greensboro",state:"NC",region:"DEFAULT",zip:"27401",lat1:35.9,lat2:36.2,lng1:-80.0,lng2:-79.6},
-    {city:"Plano",state:"TX",region:"TX",zip:"75023",lat1:33.0,lat2:33.2,lng1:-96.8,lng2:-96.5},
-    {city:"Newark",state:"NJ",region:"DEFAULT",zip:"07101",lat1:40.6,lat2:40.9,lng1:-74.3,lng2:-74.0},
-    {city:"Orlando",state:"FL",region:"FL",zip:"32801",lat1:28.3,lat2:28.7,lng1:-81.6,lng2:-81.2},
-    {city:"Chandler",state:"AZ",region:"AZ",zip:"85224",lat1:33.1,lat2:33.4,lng1:-111.9,lng2:-111.7},
-    {city:"Laredo",state:"TX",region:"DEFAULT",zip:"78041",lat1:27.4,lat2:27.7,lng1:-99.6,lng2:-99.4},
-    {city:"Madison",state:"WI",region:"DEFAULT",zip:"53701",lat1:43.0,lat2:43.3,lng1:-89.6,lng2:-89.2},
-    {city:"Durham",state:"NC",region:"NC",zip:"27701",lat1:35.8,lat2:36.1,lng1:-79.1,lng2:-78.8},
-    {city:"Lubbock",state:"TX",region:"DEFAULT",zip:"79401",lat1:33.4,lat2:33.7,lng1:-102.0,lng2:-101.6},
-    {city:"Winston-Salem",state:"NC",region:"DEFAULT",zip:"27101",lat1:35.9,lat2:36.2,lng1:-80.4,lng2:-80.0},
-    {city:"Garland",state:"TX",region:"TX",zip:"75040",lat1:32.8,lat2:33.0,lng1:-96.7,lng2:-96.5},
-    {city:"Glendale",state:"AZ",region:"AZ",zip:"85301",lat1:33.4,lat2:33.7,lng1:-112.3,lng2:-112.1},
-    {city:"Hialeah",state:"FL",region:"FL",zip:"33010",lat1:25.8,lat2:26.0,lng1:-80.4,lng2:-80.2},
-    {city:"Scottsdale",state:"AZ",region:"AZ",zip:"85251",lat1:33.4,lat2:33.8,lng1:-111.9,lng2:-111.7},
-    {city:"Baton Rouge",state:"LA",region:"DEFAULT",zip:"70801",lat1:30.3,lat2:30.6,lng1:-91.3,lng2:-90.9},
-    {city:"Fremont",state:"CA",region:"CA",zip:"94536",lat1:37.4,lat2:37.6,lng1:-122.1,lng2:-121.9},
-    {city:"Richmond",state:"VA",region:"DEFAULT",zip:"23220",lat1:37.4,lat2:37.7,lng1:-77.7,lng2:-77.2},
-    {city:"Spokane",state:"WA",region:"DEFAULT",zip:"99201",lat1:47.5,lat2:47.8,lng1:-117.6,lng2:-117.2},
-    {city:"Des Moines",state:"IA",region:"DEFAULT",zip:"50301",lat1:41.4,lat2:41.7,lng1:-93.8,lng2:-93.4},
-    {city:"Tacoma",state:"WA",region:"WA",zip:"98401",lat1:47.1,lat2:47.4,lng1:-122.6,lng2:-122.2},
+    {city:"Atlanta",state:"GA",region:"GA",zip:"30301",lat1:33.5,lat2:34.0,lng1:-84.6,lng2:-84.1},
+    {city:"Kansas City",state:"MO",region:"MO",zip:"64101",lat1:38.9,lat2:39.3,lng1:-94.8,lng2:-94.3},
+    {city:"Miami",state:"FL",region:"FL",zip:"33101",lat1:25.5,lat2:26.5,lng1:-80.5,lng2:-79.9},
+    {city:"Pittsburgh",state:"PA",region:"PA",zip:"15201",lat1:40.3,lat2:40.6,lng1:-80.2,lng2:-79.8},
     {city:"Salt Lake City",state:"UT",region:"UT",zip:"84101",lat1:40.6,lat2:40.9,lng1:-112.2,lng2:-111.7},
-    {city:"Cape Coral",state:"FL",region:"DEFAULT",zip:"33901",lat1:26.4,lat2:26.7,lng1:-82.1,lng2:-81.8},
-    {city:"Fort Lauderdale",state:"FL",region:"FL",zip:"33301",lat1:26.0,lat2:26.3,lng1:-80.3,lng2:-80.0},
-    {city:"Birmingham",state:"AL",region:"DEFAULT",zip:"35201",lat1:33.4,lat2:33.7,lng1:-87.0,lng2:-86.6},
-    {city:"Knoxville",state:"TN",region:"DEFAULT",zip:"37901",lat1:35.8,lat2:36.1,lng1:-84.2,lng2:-83.8},
-    {city:"Huntsville",state:"AL",region:"DEFAULT",zip:"35801",lat1:34.6,lat2:34.9,lng1:-86.8,lng2:-86.4},
-    {city:"Tempe",state:"AZ",region:"AZ",zip:"85281",lat1:33.3,lat2:33.5,lng1:-111.9,lng2:-111.8},
-    {city:"Providence",state:"RI",region:"DEFAULT",zip:"02901",lat1:41.7,lat2:42.0,lng1:-71.6,lng2:-71.3},
-    {city:"Aurora",state:"IL",region:"IL",zip:"60505",lat1:41.7,lat2:41.9,lng1:-88.4,lng2:-88.1},
-    {city:"Chattanooga",state:"TN",region:"DEFAULT",zip:"37401",lat1:34.9,lat2:35.2,lng1:-85.5,lng2:-85.2},
-    {city:"Fayetteville",state:"NC",region:"DEFAULT",zip:"28301",lat1:34.9,lat2:35.2,lng1:-79.2,lng2:-78.8},
-    {city:"Yonkers",state:"NY",region:"NY",zip:"10701",lat1:40.9,lat2:41.0,lng1:-73.9,lng2:-73.8},
-    {city:"Akron",state:"OH",region:"DEFAULT",zip:"44301",lat1:40.9,lat2:41.2,lng1:-81.7,lng2:-81.4},
-    {city:"Glendale",state:"CA",region:"CA",zip:"91201",lat1:34.1,lat2:34.3,lng1:-118.4,lng2:-118.1},
-    {city:"Columbus",state:"GA",region:"DEFAULT",zip:"31901",lat1:32.3,lat2:32.6,lng1:-85.1,lng2:-84.8},
-    {city:"Shreveport",state:"LA",region:"DEFAULT",zip:"71101",lat1:32.3,lat2:32.6,lng1:-93.9,lng2:-93.6},
-    {city:"Little Rock",state:"AR",region:"DEFAULT",zip:"72201",lat1:34.6,lat2:34.9,lng1:-92.5,lng2:-92.1},
+    {city:"Orlando",state:"FL",region:"FL",zip:"32801",lat1:28.3,lat2:28.7,lng1:-81.6,lng2:-81.2},
+    {city:"St. Louis",state:"MO",region:"MO",zip:"63101",lat1:38.4,lat2:38.8,lng1:-90.5,lng2:-90.1},
+    {city:"Sacramento",state:"CA",region:"CA",zip:"95814",lat1:38.4,lat2:38.7,lng1:-121.6,lng2:-121.3},
   ];
-
   for(const c of cities){
     if(lat>=c.lat1&&lat<=c.lat2&&lng>=c.lng1&&lng<=c.lng2){
       return{city:c.city,state:c.state,region:c.region||"DEFAULT",zip:c.zip};
@@ -505,63 +360,38 @@ function latLngToRegion(lat,lng){
   return{city:"your area",state:"",region:"DEFAULT",zip:"00000"};
 }
 
-const VENUES={
-  VA:["Mount Trashmore Park","Sandler Center","Neptune Festival Grounds","Virginia Aquarium","Chesapeake City Park","Town Center VB","First Landing State Park","Oceanfront Boardwalk","The Naro","Zeider's American Dream Theater"],
-  NY:["Central Park","Prospect Park","Bryant Park","Governors Island","Brooklyn Bridge Park","Madison Square Garden","Barclays Center","The Bowery","Astoria Park","Flushing Meadows"],
-  CA:["Griffith Park","Echo Park","Grand Park","Venice Beach","The Troubadour","Hollywood Bowl","Staples Center","Exposition Park","Elysian Park","MacArthur Park"],
-  FL:["Bayfront Park","Tropical Park","Wynwood Walls","Marlins Park","Lummus Park","Virginia Key Beach","Margaret Pace Park","South Pointe Park","Peacock Park","AmericanAirlines Arena"],
-  DEFAULT:["City Park","Riverside Park","Town Square","Community Center","Fairgrounds","Main Street Plaza","Heritage Park","Lakefront Park","Downtown Commons","The Venue"],
-};
-
 // ── Type metadata ─────────────────────────────────────────────────────────────
 const TYPE_META={
-  Festival:  {color:"#f97316",icon:"🎪"},
-  Market:    {color:"#22c55e",icon:"🌿"},
-  Music:     {color:"#ec4899",icon:"🎵"},
-  Arts:      {color:"#a855f7",icon:"🎨"},
-  Family:    {color:"#3b82f6",icon:"👨‍👩‍👧"},
-  Food:      {color:"#eab308",icon:"🍴"},
-  Community: {color:"#14b8a6",icon:"◎"},
-  Brewery:   {color:"#8b5cf6",icon:"◈"},
-  Carnival:  {color:"#f43f5e",icon:"🎡"},
-  Kids:      {color:"#06b6d4",icon:"✦"},
-  Sports:    {color:"#22c55e",icon:"🏆"},
-  Nightlife: {color:"#e879f9",icon:"🌙"},
-  Outdoor:   {color:"#84cc16",icon:"🌲"},
-  Other:     {color:"#94a3b8",icon:"●"},
+  Festival:{color:"#f97316",icon:"🎪"},Market:{color:"#22c55e",icon:"🌿"},
+  Music:{color:"#ec4899",icon:"🎵"},Arts:{color:"#a855f7",icon:"🎨"},
+  Family:{color:"#3b82f6",icon:"👨‍👩‍👧"},Food:{color:"#eab308",icon:"🍴"},
+  Community:{color:"#14b8a6",icon:"◎"},Brewery:{color:"#8b5cf6",icon:"◈"},
+  Carnival:{color:"#f43f5e",icon:"🎡"},Kids:{color:"#06b6d4",icon:"✦"},
+  Sports:{color:"#22c55e",icon:"🏆"},Nightlife:{color:"#e879f9",icon:"🌙"},
+  Outdoor:{color:"#84cc16",icon:"🌲"},Other:{color:"#94a3b8",icon:"●"},
 };
 function m(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
-
-// Sanitize text for safe insertion into HTML attributes and template literals
 function san(str){
-  if(!str) return "";
-  return String(str)
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#39;")
-    .replace(/`/g,"&#96;")
-    .replace(/\$/g,"&#36;");
+  if(!str)return"";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;").replace(/`/g,"&#96;").replace(/\$/g,"&#36;");
 }
 
-// ── Who filters ───────────────────────────────────────────────────────────────
+// ── Who & Date filters ────────────────────────────────────────────────────────
 const WHO_FILTERS=[
-  {id:"all",    label:"Everyone",  icon:"👥"},
-  {id:"solo",   label:"Solo",      icon:"🙋"},
-  {id:"couple", label:"Couples",   icon:"💑"},
-  {id:"family", label:"Families",  icon:"👨‍👩‍👧"},
-  {id:"group",  label:"Groups",    icon:"🎉"},
+  {id:"all",label:"Everyone",icon:"👥"},
+  {id:"solo",label:"Solo",icon:"🙋"},
+  {id:"couple",label:"Couples",icon:"💑"},
+  {id:"family",label:"Families",icon:"👨‍👩‍👧"},
+  {id:"group",label:"Groups",icon:"🎉"},
 ];
-
-// ── Date range options ────────────────────────────────────────────────────────
 const DATE_RANGES=[
-  {id:"weekend", label:"This Weekend", days:3},
-  {id:"week",    label:"This Week",    days:7},
-  {id:"2weeks",  label:"2 Weeks",      days:14},
-  {id:"month",   label:"1 Month",      days:30},
-  {id:"2months", label:"2 Months",     days:60},
-  {id:"3months", label:"3 Months",     days:90},
+  {id:"weekend",label:"This Weekend",days:3},
+  {id:"week",label:"This Week",days:7},
+  {id:"2weeks",label:"2 Weeks",days:14},
+  {id:"month",label:"1 Month",days:30},
+  {id:"2months",label:"2 Months",days:60},
+  {id:"3months",label:"3 Months",days:90},
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -571,7 +401,7 @@ function formatDate(d){
   if(!d)return"TBD";
   try{
     const dt=new Date(d+"T00:00:00");
-    const today=new Date(); today.setHours(0,0,0,0);
+    const today=new Date();today.setHours(0,0,0,0);
     const diff=Math.round((dt-today)/(1000*60*60*24));
     if(diff===0)return"Today";
     if(diff===1)return"Tomorrow";
@@ -588,7 +418,7 @@ function isThisWeekend(ds){
   const ev=new Date(ds+"T00:00:00");
   return ev>=fri&&ev<=sun;
 }
-function withinDays(ds, days){
+function withinDays(ds,days){
   if(!ds)return true;
   const today=new Date();today.setHours(0,0,0,0);
   const cutoff=new Date(today);cutoff.setDate(today.getDate()+days);
@@ -602,7 +432,9 @@ function getWeather(ds,r){
 }
 
 // ── Fallback events ───────────────────────────────────────────────────────────
-function generateFallback(zip, regionOverride){
+const VENUES={VA:["Mount Trashmore Park","Sandler Center","Neptune Festival Grounds","Virginia Aquarium","Chesapeake City Park","Town Center VB","First Landing State Park","Oceanfront Boardwalk","The Naro","Zeider's American Dream Theater"],DEFAULT:["City Park","Riverside Park","Town Square","Community Center","Fairgrounds","Main Street Plaza","Heritage Park","Lakefront Park","Downtown Commons","The Venue"]};
+
+function generateFallback(zip,regionOverride){
   const info=regionOverride||getRegionInfo(zip);
   const venues=shuffle(VENUES[info.region]||VENUES.DEFAULT);
   const city=info.city;
@@ -613,59 +445,23 @@ function generateFallback(zip, regionOverride){
     {name:"Stand-Up Comedy Night",type:"Nightlife",cost:"$12",who:["solo","couple","group"],days:10,desc:"Local and touring comedians take the stage for a night of laughs.",sched:["7:00 PM · Doors Open","8:00 PM · Show Starts","10:00 PM · After Party"]},
     {name:"Outdoor Movie Night",type:"Outdoor",cost:"Free",who:["all"],days:6,desc:"Free film under the stars. Food trucks on site. Bring a blanket.",sched:["6:00 PM · Food Trucks","8:00 PM · Movie Starts"]},
     {name:"Art Gallery Opening",type:"Arts",cost:"Free",who:["solo","couple","group"],days:12,desc:"Opening night for a new local artist exhibition. Wine and light bites served.",sched:["6:00 PM · Doors Open","7:00 PM · Artist Talk","9:00 PM · Closes"]},
-    {name:"Family Carnival",type:"Carnival",cost:"Free",who:["all","family"],days:45,desc:"Rides, games, prizes, and food for the whole family.",sched:["11:00 AM · Opens","2:00 PM · Pie Eating Contest","5:00 PM · Closes"]},
-    {name:"Live Jazz Concert",type:"Music",cost:"Free",who:["all"],days:14,desc:"Free outdoor jazz every weekend this summer. Blankets welcome.",sched:["5:00 PM · Opening Act","7:00 PM · Headliner","9:00 PM · Encore"]},
-    {name:"Food Truck Rally",type:"Food",cost:"Free",who:["all"],days:20,desc:"30+ food trucks, live music, and competitions. Something for everyone.",sched:["11:00 AM · Opens","2:00 PM · Contest","6:00 PM · Closes"]},
+    {name:"Live Jazz Concert",type:"Music",cost:"Free",who:["all"],days:14,desc:"Free outdoor jazz every weekend this summer.",sched:["5:00 PM · Opening Act","7:00 PM · Headliner","9:00 PM · Encore"]},
+    {name:"Food Truck Rally",type:"Food",cost:"Free",who:["all"],days:20,desc:"30+ food trucks, live music, and competitions.",sched:["11:00 AM · Opens","2:00 PM · Contest","6:00 PM · Closes"]},
     {name:"5K Fun Run",type:"Sports",cost:"$25",who:["solo","couple","group","family"],days:25,desc:"Community 5K run through downtown. All fitness levels welcome.",sched:["7:00 AM · Registration","8:00 AM · Race Starts","10:00 AM · Awards"]},
     {name:"Singles Mixer",type:"Community",cost:"$10",who:["solo"],days:18,desc:"Casual social mixer for singles. Games, drinks, and good conversation.",sched:["7:00 PM · Doors Open","7:30 PM · Icebreakers","10:00 PM · Closes"]},
     {name:"Couples Wine Tasting",type:"Food",cost:"$35",who:["couple"],days:22,desc:"Guided wine tasting for couples with charcuterie and live acoustic music.",sched:["6:00 PM · Welcome","6:30 PM · Tasting Begins","9:00 PM · Closes"]},
     {name:"Hiking Group Meetup",type:"Outdoor",cost:"Free",who:["solo","group"],days:9,desc:"Group hike through local trails. All skill levels. Meet new people.",sched:["8:00 AM · Meet at Trailhead","8:30 AM · Hike Starts","11:00 AM · Returns"]},
-    {name:"Cultural Heritage Festival",type:"Festival",cost:"$5",who:["all"],days:35,desc:"Food, music, and art celebrating the diversity of the community.",sched:["10:00 AM · Opens","12:00 PM · Performances","4:00 PM · Closes"]},
-    {name:"Kids STEM Expo",type:"Kids",cost:"$5",who:["family"],days:28,desc:"Robotics, science experiments, and coding workshops for kids ages 5-14.",sched:["9:00 AM · Doors Open","10:00 AM · Robotics","2:00 PM · Science Fair"]},
     {name:"Rooftop Bar Crawl",type:"Nightlife",cost:"$20",who:["solo","group","couple"],days:15,desc:"Hit the best rooftop bars in the city with a guided group.",sched:["7:00 PM · First Stop","8:30 PM · Second Stop","10:00 PM · Final Stop"]},
-    {name:"Yoga in the Park",type:"Outdoor",cost:"Free",who:["all","solo","couple"],days:5,desc:"Free outdoor yoga class for all levels. Mats provided. Beautiful setting.",sched:["8:00 AM · Class Starts","9:30 AM · Meditation","10:00 AM · Ends"]},
+    {name:"Yoga in the Park",type:"Outdoor",cost:"Free",who:["all","solo","couple"],days:5,desc:"Free outdoor yoga class for all levels. Mats provided.",sched:["8:00 AM · Class Starts","9:30 AM · Meditation","10:00 AM · Ends"]},
     {name:"Neighborhood Block Party",type:"Community",cost:"Free",who:["all"],days:30,desc:"Annual block party with grilling, games, and live music for all ages.",sched:["3:00 PM · Starts","6:00 PM · Live Band","8:00 PM · Closes"]},
+    {name:"Speed Dating Night",type:"Community",cost:"$25",who:["solo"],days:13,desc:"Professionally organized speed dating. Guaranteed to meet 10+ people.",sched:["7:00 PM · Check-in","7:30 PM · Rounds Begin","9:30 PM · Matches Revealed"]},
+    {name:"Cultural Heritage Festival",type:"Festival",cost:"$5",who:["all"],days:35,desc:"Food, music, and art celebrating the diversity of the community.",sched:["10:00 AM · Opens","12:00 PM · Performances","4:00 PM · Closes"]},
+    {name:"Sunset Kayak Tour",type:"Outdoor",cost:"$45",who:["solo","couple","group"],days:8,desc:"Guided kayak tour along the waterway at golden hour.",sched:["5:30 PM · Meet at Launch","6:00 PM · Tour Starts","8:00 PM · Returns"]},
   ];
   return T.map((t,i)=>{
     const date=addDays(t.days);
-    return{
-      id:String(i+1),name:t.name,type:t.type,
-      emoji:m(t.type).icon,photo:getPhoto(t.type,String(i+1)),
-      date,location:venues[i%venues.length],
-      address:`${venues[i%venues.length]}, ${city}${info.state?", "+info.state:""}`,
-      cost:t.cost,desc:t.desc,who:t.who,
-      rating:4,weather:getWeather(date,info.region||"DEFAULT"),
-      isWeekend:isThisWeekend(date),sched:t.sched,source:"Local",
-    };
-  }).sort((a,b)=>{
-    if(!a.date&&!b.date)return 0;
-    if(!a.date)return 1;
-    if(!b.date)return -1;
-    return a.date.localeCompare(b.date);
-  });
-}
-
-async function fetchLiveEvents(zip){
-  try{
-    const res=await fetch(`${PROXY_URL}?zip=${zip}`);
-    if(!res.ok)throw new Error("API error");
-    const data=await res.json();
-    if(!data.events||data.events.length===0)throw new Error("No events");
-    return data.events.map(ev=>({
-      ...ev,
-      emoji:m(ev.type).icon,
-      photo:getPhoto(ev.type,ev.id),
-      weather:getWeather(ev.startDate,getRegionInfo(zip).region),
-      isWeekend:isThisWeekend(ev.startDate),
-      date:ev.startDate,
-      sched:ev.subEvents?.map(s=>`${s.time} · ${s.name}`)||[],
-      rating:ev.familyRating||4,
-      who:["all"],
-    }));
-  }catch(e){
-    console.log("Live fetch failed:",e.message);
-    return null;
-  }
+    return{id:String(i+1),name:t.name,type:t.type,emoji:m(t.type).icon,photo:getPhoto(t.type,String(i+1)),date,location:venues[i%venues.length],address:`${venues[i%venues.length]}, ${city}${info.state?", "+info.state:""}`,cost:t.cost,desc:t.desc,who:t.who,rating:4,weather:getWeather(date,info.region||"DEFAULT"),isWeekend:isThisWeekend(date),sched:t.sched,source:"Local",lat:null,lng:null};
+  }).sort((a,b)=>a.date.localeCompare(b.date));
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -673,67 +469,101 @@ let state={
   screen:"home",searchInput:"",zip:"",events:[],info:null,
   openId:null,typeFilter:"All",whoFilter:"all",dateRange:"3months",
   freeOnly:false,favs:new Set(),toast:"",gpsLoading:false,
-  loading:false,liveLoading:false,liveData:false,suggestions:[],searchError:"",
-  reviews:{}, reviewInput:{}, reviewLoading:{},
-  userLat:null, userLng:null,
+  loading:false,liveLoading:false,liveData:false,
+  suggestions:[],searchError:"",userLat:null,userLng:null,
+  reviews:{},reviewInput:{},reviewLoading:{},
+  attendanceCounts:{},going:new Set(),
+  session:null,user:null,
+  authModal:null,authError:"",authLoading:false,
+  authEmail:"",authPassword:"",authMode:"signin",
+  viewMode:"list",mapInstance:null,
 };
+
 function setState(u){Object.assign(state,u);render();}
 function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}),2500);}
+function m2(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
+
+// ── Auth handlers ─────────────────────────────────────────────────────────────
+async function handleAuth(e){
+  e&&e.preventDefault();
+  setState({authLoading:true,authError:""});
+  const {authEmail,authPassword,authMode}=state;
+  if(!authEmail||!authPassword){setState({authLoading:false,authError:"Please enter email and password"});return;}
+  
+  const result = authMode==="signup" ? await signUp(authEmail,authPassword) : await signIn(authEmail,authPassword);
+  
+  if(result.error||result.error_description){
+    setState({authLoading:false,authError:result.error_description||result.error||"Authentication failed"});
+    return;
+  }
+  
+  const session = result.access_token ? result : result.session;
+  const user = result.user || session?.user;
+  
+  if(session&&user){
+    const going = await getUserGoing(user.id);
+    setState({session,user,authModal:null,authLoading:false,authEmail:"",authPassword:"",going});
+    showToast(authMode==="signup"?"✓ Account created! Welcome to Buzz":"✓ Welcome back!");
+  } else {
+    setState({authLoading:false,authError:"Something went wrong. Try again."});
+  }
+}
 
 // ── Search ────────────────────────────────────────────────────────────────────
-async function doSearch(input, regionOverride){
+async function doSearch(input,regionOverride){
   const resolved=regionOverride||resolveSearch(input);
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
-
-  // Phase 1 — show generated events instantly
   const fallback=generateFallback(zip,info);
-  setState({
-    loading:false, liveLoading:true, screen:"results",
-    events:fallback, openId:null, typeFilter:"All",
-    whoFilter:"all", freeOnly:false, liveData:false,
-    info, zip, searchError:""
-  });
-
-  // Phase 2 — fetch live events in background, merge when ready
-  try {
-    const coordParams = state.userLat && state.userLng ? `&lat=${state.userLat}&lng=${state.userLng}` : "";
-    const res = await fetch(`${PROXY_URL}?zip=${zip}${coordParams}`);
-    if(!res.ok) throw new Error("API error");
-    const data = await res.json();
-    if(data.events && data.events.length > 0){
-      const liveEvents = data.events.map(ev=>({
-        ...ev,
-        emoji: m(ev.type).icon||"●",
-        photo: ev.image || getPhoto(ev.type, ev.id),
-        weather: getWeather(ev.startDate, getRegionInfo(zip).region),
-        isWeekend: isThisWeekend(ev.startDate),
-        date: ev.startDate,
-        sched: ev.subEvents?.map(s=>`${s.time} · ${s.name}`)||[],
-        rating: ev.familyRating||4,
-        who: ["all"],
+  setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
+  
+  // Fetch attendance counts for fallback events
+  loadAttendanceCounts(fallback.map(e=>e.id));
+  
+  // Phase 2 - live events
+  try{
+    const coordParams=state.userLat&&state.userLng?`&lat=${state.userLat}&lng=${state.userLng}`:"";
+    const res=await fetch(`${PROXY_URL}?zip=${zip}${coordParams}`);
+    if(!res.ok)throw new Error("API error");
+    const data=await res.json();
+    if(data.events&&data.events.length>0){
+      const liveEvents=data.events.map(ev=>({
+        ...ev,emoji:m2(ev.type).icon,photo:ev.image||getPhoto(ev.type,ev.id),
+        weather:getWeather(ev.startDate,getRegionInfo(zip).region),
+        isWeekend:isThisWeekend(ev.startDate),date:ev.startDate,
+        sched:ev.subEvents?.map(s=>`${s.time} · ${s.name}`)||[],
+        rating:ev.familyRating||4,who:["all"],
       }));
-      // Merge live events with fallback — live events first, then any fallback not duplicated
-      const liveNames = new Set(liveEvents.map(e=>e.name.toLowerCase().slice(0,15)));
-      const uniqueFallback = fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
-      const merged = [...liveEvents, ...uniqueFallback];
-      // Sort all events chronologically
+      const liveNames=new Set(liveEvents.map(e=>e.name.toLowerCase().slice(0,15)));
+      const uniqueFallback=fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
+      const merged=[...liveEvents,...uniqueFallback];
       merged.sort((a,b)=>{
         if(!a.date&&!b.date)return 0;
         if(!a.date)return 1;
         if(!b.date)return -1;
+        if(a.distanceMiles!=null&&b.distanceMiles!=null){
+          const bandA=a.distanceMiles<10?0:a.distanceMiles<25?1:a.distanceMiles<50?2:3;
+          const bandB=b.distanceMiles<10?0:b.distanceMiles<25?1:b.distanceMiles<50?2:3;
+          if(bandA!==bandB)return bandA-bandB;
+        }
         return a.date.localeCompare(b.date);
       });
-      setState({events:merged, liveLoading:false, liveData:true});
-      showToast(`✓ ${liveEvents.length} live events added`);
-    } else {
-      setState({liveLoading:false, liveData:false});
+      setState({events:merged,liveLoading:false,liveData:true});
+      loadAttendanceCounts(merged.map(e=>e.id));
+      showToast(`✓ ${liveEvents.length} live events loaded`);
+    }else{
+      setState({liveLoading:false,liveData:false});
     }
-  } catch(e) {
-    console.log("Live fetch failed:", e.message);
-    setState({liveLoading:false, liveData:false});
+  }catch(e){
+    console.log("Live fetch failed:",e.message);
+    setState({liveLoading:false,liveData:false});
   }
+}
+
+async function loadAttendanceCounts(eventIds){
+  const counts=await getAttendanceCounts(eventIds);
+  setState({attendanceCounts:{...state.attendanceCounts,...counts}});
 }
 
 function detectLocation(){
@@ -742,127 +572,189 @@ function detectLocation(){
   navigator.geolocation.getCurrentPosition(pos=>{
     const{latitude:lat,longitude:lng}=pos.coords;
     const r=latLngToRegion(lat,lng);
-    state.userLat=lat;
-    state.userLng=lng;
+    state.userLat=lat;state.userLng=lng;
     setState({gpsLoading:false,searchInput:r.city});
     doSearch(r.city,r);
     showToast(`📍 Found you in ${r.city}`);
   },()=>{setState({gpsLoading:false});showToast("Couldn't get location");},{timeout:8000});
 }
 
+// ── Map ───────────────────────────────────────────────────────────────────────
+let leafletMap=null;
+
+function initMap(events,center){
+  const mapDiv=document.getElementById("buzz-map");
+  if(!mapDiv)return;
+  
+  if(leafletMap){leafletMap.remove();leafletMap=null;}
+  
+  const defaultCenter=center||[39.5,(-98.35)];
+  leafletMap=L.map("buzz-map",{zoomControl:true,attributionControl:false}).setView(defaultCenter,11);
+  
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    maxZoom:19,
+    attribution:"© OpenStreetMap"
+  }).addTo(leafletMap);
+
+  // Apply dark filter via CSS
+  const style=document.createElement("style");
+  style.textContent=`.leaflet-tile{filter:brightness(0.5) saturate(0.6) hue-rotate(180deg) invert(1);}`;
+  document.head.appendChild(style);
+
+  const bounds=[];
+  events.forEach(ev=>{
+    const lat=parseFloat(ev.lat);
+    const lng=parseFloat(ev.lng);
+    if(!lat||!lng||isNaN(lat)||isNaN(lng))return;
+    bounds.push([lat,lng]);
+    const meta=m2(ev.type);
+    const icon=L.divIcon({
+      html:`<div style="background:${meta.color};width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)">${meta.icon}</div>`,
+      iconSize:[32,32],iconAnchor:[16,16],className:""
+    });
+    const count=state.attendanceCounts[ev.id]||0;
+    L.marker([lat,lng],{icon}).addTo(leafletMap).bindPopup(`
+      <div class="map-popup">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <span style="background:${meta.color}22;color:${meta.color};padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700">${ev.type}</span>
+          ${count?`<span style="font-size:10px;color:rgba(255,255,255,0.4)">👥 ${count} going</span>`:""}
+        </div>
+        <h3>${san(ev.name)}</h3>
+        <p>${formatDate(ev.date)} · ${san(ev.location)}</p>
+        <p style="color:${meta.color};font-weight:700">${san(ev.cost)}</p>
+        ${ev.url?`<a href="${ev.url}" target="_blank" style="color:#a5b4fc;font-size:11px">View event →</a>`:""}
+      </div>
+    `,{maxWidth:250});
+  });
+  if(bounds.length>0)leafletMap.fitBounds(bounds,{padding:[30,30],maxZoom:13});
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
 function render(){
   document.getElementById("root").innerHTML=state.screen==="home"?renderHome():renderResults();
   bindEvents();
+  if(state.authModal)renderAuthModal();
+}
+
+function renderAuthModal(){
+  const existing=document.getElementById("auth-modal-overlay");
+  if(existing)existing.remove();
+  const overlay=document.createElement("div");
+  overlay.id="auth-modal-overlay";
+  overlay.style.cssText="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(8px)";
+  overlay.innerHTML=`
+    <div style="background:#13131f;border-radius:20px;padding:28px 24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,0.08);animation:fadeIn 0.2s ease">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-1px">buzz</div>
+        <div style="font-size:14px;color:rgba(255,255,255,0.4);margin-top:4px">${state.authMode==="signup"?"Create your account":"Welcome back"}</div>
+      </div>
+      ${state.authError?`<div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:10px;padding:10px 14px;font-size:13px;color:#fca5a5;margin-bottom:16px">${state.authError}</div>`:""}
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <input id="auth-email" type="email" value="${state.authEmail}" placeholder="Email address" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%"/>
+        <input id="auth-password" type="password" value="${state.authPassword}" placeholder="Password" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%"/>
+        <button id="auth-submit" style="background:#6366f1;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;width:100%">
+          ${state.authLoading?"Loading...":(state.authMode==="signup"?"Create Account":"Sign In")}
+        </button>
+        <div style="text-align:center;font-size:13px;color:rgba(255,255,255,0.4)">
+          ${state.authMode==="signup"?"Already have an account?":"Don't have an account?"}
+          <span id="auth-toggle" style="color:#a5b4fc;cursor:pointer;margin-left:4px">${state.authMode==="signup"?"Sign in":"Sign up"}</span>
+        </div>
+      </div>
+      <button id="auth-close" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.4);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">✕</button>
+    </div>
+  `;
+  overlay.style.position="fixed";
+  document.body.appendChild(overlay);
+
+  document.getElementById("auth-email").addEventListener("input",e=>state.authEmail=e.target.value);
+  document.getElementById("auth-password").addEventListener("input",e=>state.authPassword=e.target.value);
+  document.getElementById("auth-password").addEventListener("keydown",e=>{if(e.key==="Enter")handleAuth();});
+  document.getElementById("auth-submit").addEventListener("click",handleAuth);
+  document.getElementById("auth-toggle").addEventListener("click",()=>setState({authMode:state.authMode==="signup"?"signin":"signup",authError:""}));
+  document.getElementById("auth-close").addEventListener("click",()=>setState({authModal:null}));
 }
 
 function renderHome(){
   const sugg=state.suggestions;
-  const selectedRange=DATE_RANGES.find(d=>d.id===state.dateRange)||DATE_RANGES[3];
   return`
   ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap">${state.toast}</div>`:""}
   <div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;position:relative;overflow:hidden">
     <div style="position:absolute;top:-15%;left:50%;transform:translateX(-50%);width:600px;height:600px;background:radial-gradient(circle,rgba(99,102,241,0.12) 0%,transparent 70%);pointer-events:none"></div>
-    <div style="position:absolute;bottom:-10%;right:-5%;width:300px;height:300px;background:radial-gradient(circle,rgba(236,72,153,0.06) 0%,transparent 70%);pointer-events:none"></div>
+    
+    <!-- Account button top right -->
+    <div style="position:absolute;top:20px;right:20px">
+      ${state.user
+        ?`<div id="signout-btn" style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.08)">${state.user.email?.split("@")[0]||"Account"} ↗</div>`
+        :`<div id="signin-btn" style="padding:6px 14px;border-radius:999px;background:rgba(99,102,241,0.12);color:#a5b4fc;font-size:12px;cursor:pointer;border:1px solid rgba(99,102,241,0.2)">Sign in</div>`
+      }
+    </div>
 
     <div style="position:relative;width:100%;max-width:380px">
-
-      <!-- Logo -->
       <div style="text-align:center;margin-bottom:32px">
-        <div style="font-size:42px;font-weight:900;color:#fff;letter-spacing:-2px;line-height:1">Buzz</div>
-        <div style="color:rgba(255,255,255,0.3);font-size:13px;margin-top:6px;letter-spacing:0.5px">Stop scrolling. Start doing.</div>
+        <div style="font-size:48px;font-weight:900;letter-spacing:-3px;line-height:1;background:linear-gradient(135deg,#f59e0b,#ec4899,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">buzz</div>
+        <div style="color:rgba(255,255,255,0.3);font-size:13px;margin-top:6px">Stop scrolling. Start doing.</div>
       </div>
 
-      <!-- GPS -->
-      <div id="gps-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 20px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);cursor:pointer;margin-bottom:16px;transition:all 0.2s">
-        ${state.gpsLoading
-          ?`<div style="width:16px;height:16px;border-radius:50%;border:2px solid rgba(165,180,252,0.3);border-top-color:#a5b4fc;animation:spin 0.8s linear infinite"></div><span style="color:#a5b4fc;font-size:13px;font-weight:600">Detecting location…</span>`
-          :`<span>📍</span><span style="color:#a5b4fc;font-size:13px;font-weight:600">Use my current location</span>`}
+      <div id="gps-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 20px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);cursor:pointer;margin-bottom:16px">
+        ${state.gpsLoading?`<div style="width:16px;height:16px;border-radius:50%;border:2px solid rgba(165,180,252,0.3);border-top-color:#a5b4fc;animation:spin 0.8s linear infinite"></div><span style="color:#a5b4fc;font-size:13px;font-weight:600">Detecting location…</span>`:`<span>📍</span><span style="color:#a5b4fc;font-size:13px;font-weight:600">Use my current location</span>`}
       </div>
 
-      <!-- Divider -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div>
         <span style="color:rgba(255,255,255,0.18);font-size:11px;letter-spacing:1px;text-transform:uppercase">or search</span>
         <div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div>
       </div>
 
-      <!-- Search input -->
       <div style="position:relative;margin-bottom:${sugg.length?0:14}px">
-        <div style="display:flex;background:rgba(255,255,255,0.06);border-radius:14px;border:1.5px solid ${state.searchInput?"rgba(99,102,241,0.35)":"rgba(255,255,255,0.07)"};overflow:hidden;transition:border-color 0.2s">
-          <input id="search-input" type="text" value="${state.searchInput}"
-            placeholder="City or ZIP code…"
-            autocomplete="off" autocorrect="off" autocapitalize="none"
-            spellcheck="false" dir="ltr"
-            style="flex:1;background:transparent;border:none;outline:none;padding:14px 16px;font-size:16px;color:#fff;min-width:0;direction:ltr;"
-          />
-          <div id="search-go" style="padding:0 18px;display:flex;align-items:center;justify-content:center;background:${state.searchInput.length>1?"#6366f1":"transparent"};cursor:pointer;font-size:16px;transition:background 0.2s;color:${state.searchInput.length>1?"#fff":"rgba(255,255,255,0.2)"}">→</div>
+        <div style="display:flex;background:rgba(255,255,255,0.06);border-radius:14px;border:1.5px solid ${state.searchInput?"rgba(99,102,241,0.35)":"rgba(255,255,255,0.07)"};overflow:hidden">
+          <input id="search-input" type="text" value="${state.searchInput}" placeholder="City or ZIP code…"
+            autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" dir="ltr"
+            style="flex:1;background:transparent;border:none;outline:none;padding:14px 16px;font-size:16px;color:#fff;min-width:0;direction:ltr;"/>
+          <div id="search-go" style="padding:0 18px;display:flex;align-items:center;justify-content:center;background:${state.searchInput.length>1?"#6366f1":"transparent"};cursor:pointer;font-size:16px;color:${state.searchInput.length>1?"#fff":"rgba(255,255,255,0.2)"}">→</div>
         </div>
       </div>
 
-      <!-- Suggestions -->
       <div id="suggestions-container"></div>
-
-      <!-- Error -->
       ${state.searchError?`<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.15);border-radius:10px;padding:10px 14px;font-size:13px;color:#fca5a5;margin-bottom:12px">${state.searchError}</div>`:""}
 
-      <!-- Who filter -->
       <div style="margin-bottom:14px">
         <div style="font-size:10px;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">I'm looking for…</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${WHO_FILTERS.map(w=>`
-            <div class="who-btn" data-who="${w.id}" style="padding:6px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.2)":"rgba(255,255,255,0.04)"};border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.06)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all 0.15s">
-              <span>${w.icon}</span><span>${w.label}</span>
-            </div>
-          `).join("")}
+          ${WHO_FILTERS.map(w=>`<div class="who-btn" data-who="${w.id}" style="padding:6px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.2)":"rgba(255,255,255,0.04)"};border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.06)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px">${w.icon} ${w.label}</div>`).join("")}
         </div>
       </div>
 
-      <!-- Date range -->
       <div style="margin-bottom:20px">
         <div style="font-size:10px;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">How far out?</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${DATE_RANGES.map(d=>`
-            <div class="range-btn" data-range="${d.id}" style="padding:6px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.35)":"rgba(255,255,255,0.06)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer;transition:all 0.15s">
-              ${d.label}
-            </div>
-          `).join("")}
+          ${DATE_RANGES.map(d=>`<div class="range-btn" data-range="${d.id}" style="padding:6px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.35)":"rgba(255,255,255,0.06)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer">${d.label}</div>`).join("")}
         </div>
       </div>
 
-      <!-- Popular cities -->
       <div>
         <div style="font-size:10px;color:rgba(255,255,255,0.18);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Popular</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${["Virginia Beach","New York","Miami","Chicago","Nashville","Austin","Atlanta","Seattle","Las Vegas","New Orleans","Denver","Boston","Philadelphia","San Diego","Portland"].map(c=>`
-            <div class="quick-city" data-city="${c}" style="padding:5px 11px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.05);transition:all 0.15s">${c}</div>
-          `).join("")}
+          ${["Virginia Beach","New York","Miami","Chicago","Nashville","Austin","Atlanta","Seattle","Las Vegas","New Orleans","Denver","Boston","San Diego","Portland","Philadelphia"].map(c=>`<div class="quick-city" data-city="${c}" style="padding:5px 11px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.05)">${c}</div>`).join("")}
         </div>
       </div>
-
     </div>
   </div>`;
 }
 
 function renderResults(){
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
-  // Debug: log current filter state
-  // console.log("Filtering:", state.dateRange, "maxDays:", maxDays, "events:", state.events.length);
   const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
     if(state.whoFilter!=="all"&&ev.who&&!ev.who.includes(state.whoFilter)&&!ev.who.includes("all"))return false;
     if(!withinDays(ev.date,maxDays))return false;
     return true;
-  });
-  // Always sort chronologically at render time
-  filtered.sort((a,b)=>{
+  }).sort((a,b)=>{
     if(!a.date&&!b.date)return 0;
     if(!a.date)return 1;
     if(!b.date)return -1;
     return a.date.localeCompare(b.date);
   });
-
   const types=["All",...new Set(state.events.map(e=>e.type))];
   const freeCount=filtered.filter(e=>e.cost==="Free").length;
   const weekendCount=filtered.filter(e=>e.isWeekend).length;
@@ -876,19 +768,22 @@ function renderResults(){
   }
 
   const cards=filtered.map((ev,idx)=>{
-    const meta=m(ev.type);
+    const meta=m2(ev.type);
     const isOpen=state.openId===ev.id;
     const isFav=state.favs.has(ev.id);
+    const isGoing=state.going.has(ev.id);
+    const count=state.attendanceCounts[ev.id]||0;
     return`
     <div style="border-radius:16px;overflow:hidden;background:${isOpen?"rgba(255,255,255,0.03)":"transparent"};border:1px solid ${isOpen?"rgba(255,255,255,0.07)":"transparent"};margin-bottom:${isOpen?"8px":"0"};transition:all 0.2s">
       ${isOpen?`<div style="position:relative;height:160px;overflow:hidden"><img src="${ev.photo}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.65"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.9) 0%,transparent 55%)"></div><div style="position:absolute;top:10px;left:12px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,0.5);color:${meta.color};font-size:11px;font-weight:700">${san(ev.type)}</div>${ev.isWeekend?`<div style="position:absolute;top:10px;right:12px;padding:4px 10px;border-radius:999px;background:rgba(99,102,241,0.7);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
       <div class="card-row" data-id="${ev.id}" style="display:flex;align-items:center;gap:12px;padding:14px 2px;cursor:pointer;border-bottom:${idx<filtered.length-1&&!isOpen?"1px solid rgba(255,255,255,0.04)":"none"}">
-        <div style="width:44px;height:44px;border-radius:12px;background:${meta.color}12;border:1px solid ${meta.color}20;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:${meta.color}">${meta.icon}</div>
+        <div style="width:44px;height:44px;border-radius:12px;background:${meta.color}12;border:1px solid ${meta.color}20;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${meta.icon}</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;flex-wrap:wrap">
             <span style="font-size:10px;font-weight:700;color:${meta.color};text-transform:uppercase;letter-spacing:0.8px">${ev.type}</span>
             ${ev.isWeekend?`<span style="font-size:9px;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.1);padding:1px 5px;border-radius:3px">Weekend</span>`:""}
             ${ev.cost==="Free"?`<span style="font-size:9px;font-weight:600;color:#6ee7b7;background:rgba(16,185,129,0.08);padding:1px 5px;border-radius:3px">Free</span>`:""}
+            ${count>0?`<span style="font-size:9px;color:rgba(255,255,255,0.3)">👥 ${count}</span>`:""}
           </div>
           <div style="font-weight:600;font-size:14px;color:#f1f5f9;line-height:1.3;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${san(ev.name)}</div>
           <div style="display:flex;gap:8px;align-items:center">
@@ -906,61 +801,46 @@ function renderResults(){
       ${isOpen?`
       <div style="padding:2px 14px 16px;animation:fadeIn 0.2s ease">
         <div style="display:flex;gap:8px;margin-bottom:12px">
-          ${ev.weather?`<div style="flex:1;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.05)"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Weather</div><div style="font-size:13px;font-weight:600;color:#f1f5f9">${ev.weather.i} ${ev.weather.l} · ${ev.weather.t}</div></div>`:""}
-          <div style="flex:1;background:${meta.color}08;border-radius:10px;padding:8px 12px;border:1px solid ${meta.color}15"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Cost</div><div style="font-size:13px;font-weight:700;color:${meta.color}">${san(ev.cost)}</div></div>
-          <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.05)"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px">Date</div><div style="font-size:12px;font-weight:600;color:#f1f5f9">${new Date((ev.date||"")+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div></div>
+          ${ev.weather?`<div style="flex:1;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.05)"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase">Weather</div><div style="font-size:13px;font-weight:600;color:#f1f5f9">${ev.weather.i} ${ev.weather.l} · ${ev.weather.t}</div></div>`:""}
+          <div style="flex:1;background:${meta.color}08;border-radius:10px;padding:8px 12px;border:1px solid ${meta.color}15"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase">Cost</div><div style="font-size:13px;font-weight:700;color:${meta.color}">${san(ev.cost)}</div></div>
+          <div style="flex:1;background:rgba(255,255,255,0.03);border-radius:10px;padding:8px 12px;border:1px solid rgba(255,255,255,0.05)"><div style="font-size:9px;color:rgba(255,255,255,0.2);margin-bottom:2px;text-transform:uppercase">Date</div><div style="font-size:12px;font-weight:600;color:#f1f5f9">${new Date((ev.date||"")+"T00:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})}</div></div>
         </div>
         ${ev.desc?`<p style="font-size:13px;color:rgba(255,255,255,0.4);line-height:1.65;margin-bottom:12px">${san(ev.desc)}</p>`:""}
         ${ev.address?`<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ev.address)}" target="_blank" style="display:block;font-size:11px;color:rgba(99,162,255,0.6);margin-bottom:12px;text-decoration:none">📍 ${san(ev.address)} <span style="font-size:10px;opacity:0.6">↗ Maps</span></a>`:""}
         ${ev.source&&ev.source!=="Local"?`<div style="font-size:10px;color:rgba(255,255,255,0.12);margin-bottom:10px">Data provided by ${ev.source}</div>`:""}
         
-        <!-- Reviews Section -->
-        <div style="margin-bottom:14px">
-          <div style="font-size:9px;color:rgba(255,255,255,0.15);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px">Reviews</div>
-          
-          <!-- Existing reviews -->
-          ${(state.reviews[ev.id]||[]).length > 0 ? 
-            (state.reviews[ev.id]||[]).map(r=>`
-              <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:10px 12px;margin-bottom:6px;border:1px solid rgba(255,255,255,0.05)">
-                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                  <span style="color:#fbbf24;font-size:12px">${"★".repeat(r.rating)}${"☆".repeat(5-r.rating)}</span>
-                  <span style="font-size:10px;color:rgba(255,255,255,0.2)">${new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
-                </div>
-                ${r.comment?`<p style="font-size:12px;color:rgba(255,255,255,0.4);line-height:1.5">${san(r.comment)}</p>`:""}
-              </div>
-            `).join("") 
-            : `<p style="font-size:12px;color:rgba(255,255,255,0.2);margin-bottom:10px">No reviews yet. Be the first!</p>`
-          }
-          
-          <!-- Write a review -->
-          <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;border:1px solid rgba(255,255,255,0.06)">
-            <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:8px">Leave a review</div>
-            <!-- Star rating -->
-            <div style="display:flex;gap:6px;margin-bottom:8px">
-              ${[1,2,3,4,5].map(star=>`
-                <div class="star-btn" data-id="${ev.id}" data-star="${star}" 
-                  style="font-size:20px;cursor:pointer;color:${(state.reviewInput[ev.id]?.rating||0)>=star?"#fbbf24":"rgba(255,255,255,0.15)"}">★</div>
-              `).join("")}
-            </div>
-            <!-- Comment input -->
-            <textarea class="review-text" data-id="${ev.id}" 
-              placeholder="What did you think? (optional)"
-              style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 10px;font-size:12px;color:#fff;resize:none;height:60px;font-family:inherit;outline:none;margin-bottom:8px"
-            >${state.reviewInput[ev.id]?.comment||""}</textarea>
-            <!-- Submit -->
-            <div class="submit-review" data-id="${ev.id}" data-name="${san(ev.name)}"
-              style="padding:8px 14px;border-radius:8px;background:${(state.reviewInput[ev.id]?.rating||0)>0?"rgba(99,102,241,0.8)":"rgba(255,255,255,0.06)"};color:${(state.reviewInput[ev.id]?.rating||0)>0?"#fff":"rgba(255,255,255,0.2)"};font-size:12px;font-weight:600;text-align:center;cursor:${(state.reviewInput[ev.id]?.rating||0)>0?"pointer":"default"}">
-              ${state.reviewLoading[ev.id]?"Submitting…":"Submit Review"}
-            </div>
-          </div>
+        <!-- Going button -->
+        <div class="going-btn" data-id="${ev.id}" data-name="${san(ev.name)}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border-radius:12px;background:${isGoing?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.05)"};border:1px solid ${isGoing?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"};cursor:pointer;margin-bottom:14px;transition:all 0.2s">
+          <span style="font-size:16px">${isGoing?"✓":"+"}</span>
+          <span style="font-size:13px;font-weight:600;color:${isGoing?"#6ee7b7":"rgba(255,255,255,0.5)"}">${isGoing?"You're going!":"I'm going"}</span>
+          ${count>0?`<span style="font-size:12px;color:rgba(255,255,255,0.3);margin-left:auto">👥 ${count} going</span>`:""}
         </div>
+
         ${ev.sched&&ev.sched.length?`
           <div style="font-size:9px;color:rgba(255,255,255,0.15);margin-bottom:7px;text-transform:uppercase;letter-spacing:0.8px">Schedule</div>
           ${ev.sched.map((s,i)=>{const p=s.split(" · ");return`<div style="display:flex;gap:12px;padding:7px 0;border-bottom:${i<ev.sched.length-1?"1px solid rgba(255,255,255,0.04)":"none"}"><span style="font-size:11px;color:${meta.color};min-width:68px;font-weight:600">${p[0]}</span><span style="font-size:11px;color:rgba(255,255,255,0.35)">${san(p[1]||"")}</span></div>`;}).join("")}`:""}
-        <div style="display:flex;gap:8px;margin-top:14px">
+        
+        <!-- Reviews -->
+        <div style="margin-top:14px;margin-bottom:14px">
+          <div style="font-size:9px;color:rgba(255,255,255,0.15);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.8px">Reviews</div>
+          ${(state.reviews[ev.id]||[]).length>0
+            ?(state.reviews[ev.id]||[]).map(r=>`<div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:10px 12px;margin-bottom:6px;border:1px solid rgba(255,255,255,0.05)"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="color:#fbbf24;font-size:12px">${"★".repeat(r.rating)}${"☆".repeat(5-r.rating)}</span><span style="font-size:10px;color:rgba(255,255,255,0.2)">${new Date(r.created_at).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span></div>${r.comment?`<p style="font-size:12px;color:rgba(255,255,255,0.4);line-height:1.5">${san(r.comment)}</p>`:""}</div>`).join("")
+            :`<p style="font-size:12px;color:rgba(255,255,255,0.2);margin-bottom:10px">No reviews yet. Be the first!</p>`
+          }
+          <div style="background:rgba(255,255,255,0.03);border-radius:10px;padding:12px;border:1px solid rgba(255,255,255,0.06)">
+            <div style="font-size:11px;color:rgba(255,255,255,0.3);margin-bottom:8px">Leave a review</div>
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+              ${[1,2,3,4,5].map(star=>`<div class="star-btn" data-id="${ev.id}" data-star="${star}" style="font-size:20px;cursor:pointer;color:${(state.reviewInput[ev.id]?.rating||0)>=star?"#fbbf24":"rgba(255,255,255,0.15)"}">★</div>`).join("")}
+            </div>
+            <textarea class="review-text" data-id="${ev.id}" placeholder="What did you think? (optional)" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 10px;font-size:12px;color:#fff;resize:none;height:60px;font-family:inherit;outline:none;margin-bottom:8px">${state.reviewInput[ev.id]?.comment||""}</textarea>
+            <div class="submit-review" data-id="${ev.id}" data-name="${san(ev.name)}" style="padding:8px 14px;border-radius:8px;background:${(state.reviewInput[ev.id]?.rating||0)>0?"rgba(99,102,241,0.8)":"rgba(255,255,255,0.06)"};color:${(state.reviewInput[ev.id]?.rating||0)>0?"#fff":"rgba(255,255,255,0.2)"};font-size:12px;font-weight:600;text-align:center;cursor:${(state.reviewInput[ev.id]?.rating||0)>0?"pointer":"default"}">${state.reviewLoading[ev.id]?"Submitting…":"Submit Review"}</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px">
           <div class="cal-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${ev.date||""}" data-addr="${encodeURIComponent(ev.address||ev.location)}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">📅 Calendar</div>
           ${ev.url?`<a href="${ev.url}" target="_blank" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20;text-decoration:none">🎟 Tickets</a>`:""}
-          <div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" data-url="${ev.url||""}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.08)">Share ↗</div>
+          <div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" data-url="${ev.url||""}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Share ↗</div>
         </div>
       </div>`:""}
     </div>`;
@@ -969,8 +849,7 @@ function renderResults(){
   return`
   ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap">${state.toast}</div>`:""}
   <div style="min-height:100vh;background:#0a0a0f;color:#fff">
-
-    <!-- Sticky header -->
+    <!-- Header -->
     <div style="padding:16px 16px 10px;border-bottom:1px solid rgba(255,255,255,0.05);position:sticky;top:0;background:rgba(10,10,15,0.96);backdrop-filter:blur(16px);z-index:100">
       <div style="display:flex;align-items:center;gap:10px;max-width:700px;margin:0 auto 8px">
         <div id="back-btn" style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">←</div>
@@ -978,10 +857,16 @@ function renderResults(){
           <div style="font-weight:700;font-size:16px;letter-spacing:-0.3px">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""}</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:1px">${filtered.length} things to do · ${selectedRange?.label} · ${state.liveData?'<span style="color:#6ee7b7">● Live</span>':'<span style="color:rgba(255,255,255,0.2)">● Preview</span>'}</div>
         </div>
-        <div id="new-search-btn" style="padding:6px 12px;border-radius:10px;background:rgba(99,102,241,0.1);color:#a5b4fc;font-size:12px;font-weight:600;cursor:pointer;border:1px solid rgba(99,102,241,0.15);flex-shrink:0">Search</div>
+        <!-- View toggle -->
+        <div style="display:flex;background:rgba(255,255,255,0.06);border-radius:10px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;flex-shrink:0">
+          <div id="list-view-btn" style="padding:6px 12px;font-size:12px;cursor:pointer;background:${state.viewMode==="list"?"rgba(99,102,241,0.3)":"transparent"};color:${state.viewMode==="list"?"#a5b4fc":"rgba(255,255,255,0.3)"}">≡ List</div>
+          <div id="map-view-btn" style="padding:6px 12px;font-size:12px;cursor:pointer;background:${state.viewMode==="map"?"rgba(99,102,241,0.3)":"transparent"};color:${state.viewMode==="map"?"#a5b4fc":"rgba(255,255,255,0.3)"}">🗺 Map</div>
+        </div>
+        ${state.user
+          ?`<div id="signout-btn" style="padding:6px 10px;border-radius:10px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.3);font-size:11px;cursor:pointer;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">${state.user.email?.split("@")[0]||"Me"}</div>`
+          :`<div id="signin-btn" style="padding:6px 10px;border-radius:10px;background:rgba(99,102,241,0.1);color:#a5b4fc;font-size:11px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);flex-shrink:0">Sign in</div>`
+        }
       </div>
-
-      <!-- Quick stats -->
       <div style="display:flex;gap:5px;max-width:700px;margin:0 auto;flex-wrap:wrap">
         <span style="padding:3px 9px;border-radius:6px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:11px;font-weight:500">${filtered.length} events</span>
         ${freeCount?`<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.07);color:#6ee7b7;font-size:11px;font-weight:500">${freeCount} free</span>`:""}
@@ -989,60 +874,32 @@ function renderResults(){
       </div>
     </div>
 
+    ${state.viewMode==="map"?`
+    <!-- Map view -->
+    <div id="buzz-map" style="width:100%;height:calc(100vh - 120px)"></div>
+    `:`
+    <!-- List view -->
     <div style="max-width:700px;margin:0 auto;padding:12px 14px 80px">
-
-      <!-- Filters -->
       <div style="margin-bottom:12px">
-        <!-- Who filter -->
         <div style="display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap">
           ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:4px 11px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)"};display:flex;align-items:center;gap:4px">${w.icon} ${w.label}</div>`).join("")}
         </div>
-        <!-- Date range -->
         <div style="display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap">
-          ${DATE_RANGES.map(d=>`<div class="range-filter" data-range="${d.id}" style="padding:4px 11px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.12)":"rgba(255,255,255,0.04)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.25)":"rgba(255,255,255,0.05)"}">${d.label}</div>`).join("")}
-        </div>
-        <!-- Type + free -->
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${types.map(t=>{const active=state.typeFilter===t;const meta=m(t);return`<div class="type-filter" data-type="${t}" style="padding:4px 11px;border-radius:999px;background:${active?meta.color:"rgba(255,255,255,0.04)"};color:${active?"#fff":"rgba(255,255,255,0.3)"};font-size:11px;font-weight:${active?700:400};cursor:pointer;border:1px solid ${active?meta.color:"rgba(255,255,255,0.05)"}">${t}</div>`;}).join("")}
-          <div class="toggle-free" style="padding:4px 11px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.1)":"rgba(255,255,255,0.04)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.freeOnly?"rgba(16,185,129,0.2)":"rgba(255,255,255,0.05)"}">Free Only</div>
-          <div class="clear-all" style="padding:4px 11px;border-radius:999px;background:rgba(255,255,255,0.03);color:rgba(255,255,255,0.18);font-size:11px;cursor:pointer;border:1px solid rgba(255,255,255,0.04)">Clear</div>
+          
         </div>
       </div>
-
-      ${filtered.length===0?`
-        <div style="text-align:center;padding:56px 0">
-          <div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div>
-          <p style="color:rgba(255,255,255,0.2);font-size:14px">Nothing found for your filters</p>
-          <div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div>
-        </div>`:cards}
-
-      <!-- Attribution Footer -->
+      ${filtered.length===0?`<div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.2);font-size:14px">Nothing found for your filters</p><div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div></div>`:cards}
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
         <div style="font-size:10px;color:rgba(255,255,255,0.15);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center">
-          <a href="https://developer.ticketmaster.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(0,106,255,0.08);border:1px solid rgba(0,106,255,0.15);text-decoration:none">
-            <span style="font-size:14px">🎫</span>
-            <span style="font-size:11px;font-weight:600;color:rgba(100,160,255,0.8)">Ticketmaster</span>
-          </a>
-          <a href="https://serpapi.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.15);text-decoration:none">
-            <span style="font-size:14px">🔍</span>
-            <span style="font-size:11px;font-weight:600;color:rgba(52,211,153,0.8)">SerpAPI</span>
-          </a>
-          <a href="https://rapidapi.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.15);text-decoration:none">
-            <span style="font-size:14px">⚡</span>
-            <span style="font-size:11px;font-weight:600;color:rgba(168,85,247,0.8)">RapidAPI</span>
-          </a>
-          <a href="https://unsplash.com" target="_blank" style="display:flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);text-decoration:none">
-            <span style="font-size:14px">📸</span>
-            <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.4)">Unsplash</span>
-          </a>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+          <a href="https://developer.ticketmaster.com" target="_blank" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;background:rgba(0,106,255,0.08);border:1px solid rgba(0,106,255,0.15);text-decoration:none"><span>🎫</span><span style="font-size:11px;font-weight:600;color:rgba(100,160,255,0.8)">Ticketmaster</span></a>
+          <a href="https://serpapi.com" target="_blank" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.15);text-decoration:none"><span>🔍</span><span style="font-size:11px;font-weight:600;color:rgba(52,211,153,0.8)">SerpAPI</span></a>
+          <a href="https://rapidapi.com" target="_blank" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.15);text-decoration:none"><span>⚡</span><span style="font-size:11px;font-weight:600;color:rgba(168,85,247,0.8)">RapidAPI</span></a>
+          <a href="https://unsplash.com" target="_blank" style="display:flex;align-items:center;gap:4px;padding:5px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);text-decoration:none"><span>📸</span><span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.4)">Unsplash</span></a>
         </div>
-        <div style="text-align:center;margin-top:12px">
-          <span style="font-size:10px;color:rgba(255,255,255,0.1)">Event data provided by third-party sources. Buzz is not responsible for event accuracy. © 2026 Buzz</span>
-        </div>
+        <div style="text-align:center;margin-top:12px;font-size:10px;color:rgba(255,255,255,0.1)">© 2026 Buzz · buzzfinder.app</div>
       </div>
-
-    </div>
+    </div>`}
   </div>`;
 }
 
@@ -1050,19 +907,11 @@ function renderSuggestions(sugg){
   let c=document.getElementById("suggestions-container");
   if(!c)return;
   if(!sugg||!sugg.length){c.innerHTML="";return;}
-  c.innerHTML=`<div style="background:rgba(15,15,20,0.98);border:1px solid rgba(255,255,255,0.07);border-radius:12px;margin-bottom:12px;overflow:hidden;animation:fadeIn 0.15s ease">
-    ${sugg.map(s=>`<div class="suggestion-item" data-city="${s.city}" data-state="${s.state}" data-zip="${s.zip}" data-region="${s.region||'DEFAULT'}"
-      style="padding:11px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.04)">
-      <span style="font-size:14px;color:#f1f5f9;font-weight:500">${s.city}, ${s.state}</span>
-      <span style="font-size:11px;color:rgba(255,255,255,0.2)">${s.zip}</span>
-    </div>`).join("")}
-  </div>`;
+  c.innerHTML=`<div style="background:rgba(15,15,20,0.98);border:1px solid rgba(255,255,255,0.07);border-radius:12px;margin-bottom:12px;overflow:hidden;animation:fadeIn 0.15s ease">${sugg.map(s=>`<div class="suggestion-item" data-city="${s.city}" data-state="${s.state}" data-zip="${s.zip}" data-region="${s.region||'DEFAULT'}" style="padding:11px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="font-size:14px;color:#f1f5f9;font-weight:500">${s.city}, ${s.state}</span><span style="font-size:11px;color:rgba(255,255,255,0.2)">${s.zip}</span></div>`).join("")}</div>`;
   c.querySelectorAll(".suggestion-item").forEach(el=>{
     el.addEventListener("click",()=>{
       const r={city:el.dataset.city,state:el.dataset.state,zip:el.dataset.zip,region:el.dataset.region};
-      state.searchInput=r.city+", "+r.state;
-      state.suggestions=[];
-      c.innerHTML="";
+      state.searchInput=r.city+", "+r.state;state.suggestions=[];c.innerHTML="";
       doSearch(r.city,r);
     });
   });
@@ -1071,144 +920,84 @@ function renderSuggestions(sugg){
 function bindEvents(){
   const gps=document.getElementById("gps-btn");
   if(gps)gps.addEventListener("click",detectLocation);
-
+  const signinBtn=document.getElementById("signin-btn");
+  if(signinBtn)signinBtn.addEventListener("click",()=>setState({authModal:"signin",authMode:"signin",authError:""}));
+  const signoutBtn=document.getElementById("signout-btn");
+  if(signoutBtn)signoutBtn.addEventListener("click",signOut);
   const inp=document.getElementById("search-input");
   if(inp){
     inp.addEventListener("input",e=>{
-      const v=e.target.value;
-      state.searchInput=v;
-      state.searchError="";
-      const sugg=getSuggestions(v);
-      state.suggestions=sugg;
-      renderSuggestions(sugg);
+      const v=e.target.value;state.searchInput=v;state.searchError="";
+      const sugg=getSuggestions(v);state.suggestions=sugg;renderSuggestions(sugg);
     });
-    inp.addEventListener("keydown",e=>{
-      if(e.key==="Enter"){state.suggestions=[];renderSuggestions([]);doSearch(state.searchInput);}
-    });
+    inp.addEventListener("keydown",e=>{if(e.key==="Enter"){state.suggestions=[];renderSuggestions([]);doSearch(state.searchInput);}});
   }
-
   const go=document.getElementById("search-go");
   if(go)go.addEventListener("click",()=>{state.suggestions=[];renderSuggestions([]);doSearch(state.searchInput);});
-
-  // Who filter on home
-  document.querySelectorAll(".who-btn").forEach(el=>{
-    el.addEventListener("click",()=>setState({whoFilter:el.dataset.who}));
+  document.querySelectorAll(".who-btn").forEach(el=>el.addEventListener("click",()=>setState({whoFilter:el.dataset.who})));
+  document.querySelectorAll(".range-btn").forEach(el=>el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();}));
+  document.querySelectorAll(".quick-city").forEach(el=>el.addEventListener("click",()=>{state.searchInput=el.dataset.city;doSearch(el.dataset.city);}));
+  const listBtn=document.getElementById("list-view-btn");
+  const mapBtn=document.getElementById("map-view-btn");
+  if(listBtn)listBtn.addEventListener("click",()=>{if(state.viewMode!=="list"){state.viewMode="list";render();}});
+  if(mapBtn)mapBtn.addEventListener("click",()=>{
+    if(state.viewMode!=="map"){
+      state.viewMode="map";render();
+      setTimeout(()=>{
+        const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
+        const filtered=state.events.filter(ev=>withinDays(ev.date,maxDays));
+        let center=null;
+        if(state.userLat&&state.userLng)center=[state.userLat,state.userLng];
+        else{
+          const withCoords=filtered.filter(ev=>ev.lat&&ev.lng);
+          if(withCoords.length>0)center=[parseFloat(withCoords[0].lat),parseFloat(withCoords[0].lng)];
+        }
+        initMap(filtered,center);
+      },150);
+    }
   });
-  // Date range on home
-  document.querySelectorAll(".range-btn").forEach(el=>{
-    el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();});
-  });
-  // Quick cities
-  document.querySelectorAll(".quick-city").forEach(el=>{
-    el.addEventListener("click",()=>{
-      const c=el.dataset.city;
-      state.searchInput=c;
-      doSearch(c);
-    });
-  });
-
-  // Results filters
   const back=document.getElementById("back-btn");
-  if(back)back.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[]}));
-  const ns=document.getElementById("new-search-btn");
-  if(ns)ns.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[]}));
-  document.querySelectorAll(".card-row").forEach(el=>{el.addEventListener("click",()=>{const id=el.dataset.id;setState({openId:state.openId===id?null:id});});});
-  document.querySelectorAll(".fav-btn").forEach(el=>{el.addEventListener("click",e=>{e.stopPropagation();const id=el.dataset.id;const f=new Set(state.favs);f.has(id)?f.delete(id):f.add(id);setState({favs:f});});});
-  document.querySelectorAll(".type-filter").forEach(el=>{
-    el.addEventListener("click",()=>{state.typeFilter=el.dataset.type;render();});
-  });
-  document.querySelectorAll(".who-filter").forEach(el=>{
-    el.addEventListener("click",()=>{state.whoFilter=el.dataset.who;render();});
-  });
-  document.querySelectorAll(".range-filter").forEach(el=>{
-    el.addEventListener("click",()=>{
-      state.dateRange=el.dataset.range;
-      // Only re-render the results, don't reset filters or scroll
-      render();
-    });
-  });
-  document.querySelectorAll(".toggle-free").forEach(el=>{
-    el.addEventListener("click",()=>{state.freeOnly=!state.freeOnly;render();});
-  });
-  document.querySelectorAll(".clear-all").forEach(el=>{el.addEventListener("click",()=>{state.typeFilter="All";state.whoFilter="all";state.freeOnly=false;state.dateRange="3months";render();});});
-  document.querySelectorAll(".cal-btn").forEach(el=>{el.addEventListener("click",()=>{const d=(el.dataset.date||"").replace(/-/g,"");if(d)window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${el.dataset.name}&dates=${d}/${d}&location=${el.dataset.addr}`,"_blank");});});
-  document.querySelectorAll(".share-btn").forEach(el=>{
-    el.addEventListener("click",()=>{
-      const name=decodeURIComponent(el.dataset.name);
-      const date=el.dataset.date;
-      const loc=decodeURIComponent(el.dataset.loc);
-      const cost=el.dataset.cost;
-      const url=el.dataset.url||"";
-      const txt=`${name} — ${date} at ${loc}. ${cost==="Free"?"It's free! ":""}Check it out on Buzz 🎉`;
-      if(navigator.share){
-        navigator.share({
-          title:name,
-          text:txt,
-          url:url||window.location.href
-        });
-      } else {
-        const copyText=url?`${txt}
-${url}`:txt;
-        navigator.clipboard?.writeText(copyText);
-        showToast("📋 Copied to clipboard!");
-      }
-    });
-  });
-
-  // ── Review handlers ──────────────────────────────────────────────────────
-  document.querySelectorAll(".star-btn").forEach(el=>{
-    el.addEventListener("click",()=>{
-      const id=el.dataset.id;
-      const star=parseInt(el.dataset.star);
-      state.reviewInput={...state.reviewInput,[id]:{...(state.reviewInput[id]||{}),rating:star}};
-      render();
-    });
-  });
-
-  document.querySelectorAll(".review-text").forEach(el=>{
-    el.addEventListener("input",e=>{
-      const id=el.dataset.id;
-      state.reviewInput={...state.reviewInput,[id]:{...(state.reviewInput[id]||{}),comment:e.target.value}};
-    });
-  });
-
-  document.querySelectorAll(".submit-review").forEach(el=>{
-    el.addEventListener("click",async()=>{
-      const id=el.dataset.id;
-      const name=el.dataset.name;
-      const input=state.reviewInput[id]||{};
-      if(!input.rating)return;
-      state.reviewLoading={...state.reviewLoading,[id]:true};
-      render();
-      const ok=await submitReview(id,name,input.rating,input.comment||"");
-      if(ok){
-        // Add review locally so it shows immediately
-        const newReview={event_id:id,event_name:name,rating:input.rating,comment:input.comment||"",created_at:new Date().toISOString()};
-        state.reviews={...state.reviews,[id]:[newReview,...(state.reviews[id]||[])]};
-        state.reviewInput={...state.reviewInput,[id]:{rating:0,comment:""}};
-        state.reviewLoading={...state.reviewLoading,[id]:false};
-        showToast("✓ Review submitted!");
-      } else {
-        // Save locally even without Supabase
-        const newReview={event_id:id,event_name:name,rating:input.rating,comment:input.comment||"",created_at:new Date().toISOString()};
-        state.reviews={...state.reviews,[id]:[newReview,...(state.reviews[id]||[])]};
-        state.reviewInput={...state.reviewInput,[id]:{rating:0,comment:""}};
-        state.reviewLoading={...state.reviewLoading,[id]:false};
-        showToast("✓ Review saved!");
-      }
-      render();
-    });
-  });
-
-  // Load reviews for open event
-  if(state.openId && !state.reviews[state.openId]){
-    fetchReviews(state.openId).then(reviews=>{
-      if(reviews.length>0){
-        state.reviews={...state.reviews,[state.openId]:reviews};
-        render();
-      }
-    });
-  }
+  if(back)back.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list"}));
+  document.querySelectorAll(".card-row").forEach(el=>el.addEventListener("click",()=>{
+    const id=el.dataset.id;const newId=state.openId===id?null:id;
+    setState({openId:newId});
+    if(newId&&!state.reviews[newId]){
+      fetchReviews(newId).then(reviews=>{if(reviews.length>0){state.reviews={...state.reviews,[newId]:reviews};render();}});
+    }
+  }));
+  document.querySelectorAll(".fav-btn").forEach(el=>el.addEventListener("click",e=>{e.stopPropagation();const id=el.dataset.id;const f=new Set(state.favs);f.has(id)?f.delete(id):f.add(id);setState({favs:f});}));
+  document.querySelectorAll(".going-btn").forEach(el=>el.addEventListener("click",()=>toggleAttendance(el.dataset.id,decodeURIComponent(el.dataset.name))));
+  document.querySelectorAll(".type-filter").forEach(el=>el.addEventListener("click",()=>{state.typeFilter=el.dataset.type;render();}));
+  document.querySelectorAll(".who-filter").forEach(el=>el.addEventListener("click",()=>{state.whoFilter=el.dataset.who;render();}));
+  document.querySelectorAll(".range-filter").forEach(el=>el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();}));
+  document.querySelectorAll(".toggle-free").forEach(el=>el.addEventListener("click",()=>{state.freeOnly=!state.freeOnly;render();}));
+  document.querySelectorAll(".clear-all").forEach(el=>el.addEventListener("click",()=>{state.typeFilter="All";state.whoFilter="all";state.freeOnly=false;state.dateRange="3months";render();}));
+  document.querySelectorAll(".cal-btn").forEach(el=>el.addEventListener("click",()=>{const d=(el.dataset.date||"").replace(/-/g,"");if(d)window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${el.dataset.name}&dates=${d}/${d}&location=${el.dataset.addr}`,"_blank");}));
+  document.querySelectorAll(".share-btn").forEach(el=>el.addEventListener("click",()=>{
+    const name=decodeURIComponent(el.dataset.name);
+    const txt=`${name} — ${el.dataset.date} at ${decodeURIComponent(el.dataset.loc)}. ${el.dataset.cost==="Free"?"Free! ":""}Check it out on Buzz 🎉`;
+    if(navigator.share)navigator.share({title:name,text:txt,url:el.dataset.url||"https://buzzfinder.app"});
+    else{navigator.clipboard?.writeText(txt);showToast("📋 Copied!");}
+  }));
+  document.querySelectorAll(".star-btn").forEach(el=>el.addEventListener("click",()=>{
+    const id=el.dataset.id;const star=parseInt(el.dataset.star);
+    state.reviewInput={...state.reviewInput,[id]:{...(state.reviewInput[id]||{}),rating:star}};render();
+  }));
+  document.querySelectorAll(".review-text").forEach(el=>el.addEventListener("input",e=>{
+    const id=el.dataset.id;
+    state.reviewInput={...state.reviewInput,[id]:{...(state.reviewInput[id]||{}),comment:e.target.value}};
+  }));
+  document.querySelectorAll(".submit-review").forEach(el=>el.addEventListener("click",async()=>{
+    const id=el.dataset.id;const name=el.dataset.name;const input=state.reviewInput[id]||{};
+    if(!input.rating)return;
+    state.reviewLoading={...state.reviewLoading,[id]:true};render();
+    await submitReview(id,name,input.rating,input.comment||"");
+    const newReview={event_id:id,event_name:name,rating:input.rating,comment:input.comment||"",created_at:new Date().toISOString()};
+    state.reviews={...state.reviews,[id]:[newReview,...(state.reviews[id]||[])]};
+    state.reviewInput={...state.reviewInput,[id]:{rating:0,comment:""}};
+    state.reviewLoading={...state.reviewLoading,[id]:false};
+    showToast("✓ Review submitted!");render();
+  }));
 }
 
 render();
