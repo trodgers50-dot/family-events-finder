@@ -492,20 +492,37 @@ async function handleAuth(e){
   
   const result = authMode==="signup" ? await signUp(authEmail,authPassword) : await signIn(authEmail,authPassword);
   
-  if(result.error||result.error_description){
-    setState({authLoading:false,authError:result.error_description||result.error||"Authentication failed"});
+  // Handle errors
+  if(result.error||result.error_description||result.msg){
+    const errMsg = result.error_description||result.msg||result.error||"Authentication failed";
+    setState({authLoading:false,authError:errMsg});
     return;
   }
   
-  const session = result.access_token ? result : result.session;
-  const user = result.user || session?.user;
+  // Supabase returns different shapes depending on version
+  // signIn returns: {access_token, user, ...} or {session:{access_token,...}, user:{...}}
+  // signUp returns: {user:{...}, session:{...}} or {access_token, user,...}
+  const user = result.user || result.session?.user;
+  const session = result.session || (result.access_token ? result : null);
   
-  if(session&&user){
+  if(user){
     const going = await getUserGoing(user.id);
-    setState({session,user,authModal:null,authLoading:false,authEmail:"",authPassword:"",going});
+    setState({session:session||result,user,authModal:null,authLoading:false,authEmail:"",authPassword:"",going});
     showToast(authMode==="signup"?"✓ Account created! Welcome to Buzz":"✓ Welcome back!");
+  } else if(authMode==="signup"&&result.id) {
+    // Some Supabase versions return user directly
+    const going = await getUserGoing(result.id);
+    setState({session:result,user:result,authModal:null,authLoading:false,authEmail:"",authPassword:"",going});
+    showToast("✓ Account created! Welcome to Buzz");
+  } else if(authMode==="signup"&&result.user&&!result.session) {
+    // Email confirmation required
+    setState({authModal:null,authLoading:false,authEmail:"",authPassword:""});
+    showToast("✓ Check your email to confirm your account!");
   } else {
-    setState({authLoading:false,authError:"Something went wrong. Try again."});
+    // Log the actual error for debugging
+    console.log("Auth result:", JSON.stringify(result));
+    const errMsg = result.message||result.error_description||result.error||result.msg||"Authentication failed. Please try again.";
+    setState({authLoading:false,authError:errMsg});
   }
 }
 
@@ -591,21 +608,21 @@ function initMap(events,center){
   const defaultCenter=center||[39.5,(-98.35)];
   leafletMap=L.map("buzz-map",{zoomControl:true,attributionControl:false}).setView(defaultCenter,11);
   
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
-    maxZoom:19,
-    attribution:"© OpenStreetMap"
+  // Use CartoDB dark tiles for proper dark map
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{
+    attribution:"© OpenStreetMap © CartoDB",
+    subdomains:"abcd",
+    maxZoom:19
   }).addTo(leafletMap);
 
-  // Apply dark filter via CSS
-  const style=document.createElement("style");
-  style.textContent=`.leaflet-tile{filter:brightness(0.5) saturate(0.6) hue-rotate(180deg) invert(1);}`;
-  document.head.appendChild(style);
-
   const bounds=[];
+  let validMarkers=0;
   events.forEach(ev=>{
     const lat=parseFloat(ev.lat);
     const lng=parseFloat(ev.lng);
-    if(!lat||!lng||isNaN(lat)||isNaN(lng))return;
+    if(!ev.lat||!ev.lng||isNaN(lat)||isNaN(lng)||lat===0||lng===0)return;
+    if(lat<-90||lat>90||lng<-180||lng>180)return;
+    validMarkers++;
     bounds.push([lat,lng]);
     const meta=m2(ev.type);
     const icon=L.divIcon({
@@ -626,7 +643,17 @@ function initMap(events,center){
       </div>
     `,{maxWidth:250});
   });
-  if(bounds.length>0)leafletMap.fitBounds(bounds,{padding:[30,30],maxZoom:13});
+  if(bounds.length>0){
+    leafletMap.fitBounds(bounds,{padding:[30,30],maxZoom:13});
+  } else if(center) {
+    leafletMap.setView(center, 11);
+    // Show message that events don't have precise locations
+    const msg = L.popup({closeButton:false})
+      .setLatLng(center)
+      .setContent('<div style="background:#1a1a2e;color:#fff;padding:10px;border-radius:8px;font-size:12px;text-align:center">Events loaded — location pins appear<br>for events with venue coordinates</div>')
+      .openOn(leafletMap);
+    setTimeout(()=>leafletMap.closePopup(),4000);
+  }
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -949,10 +976,18 @@ function bindEvents(){
         let center=null;
         if(state.userLat&&state.userLng)center=[state.userLat,state.userLng];
         else{
-          const withCoords=filtered.filter(ev=>ev.lat&&ev.lng);
+          const withCoords=filtered.filter(ev=>ev.lat&&ev.lng&&!isNaN(parseFloat(ev.lat))&&!isNaN(parseFloat(ev.lng)));
           if(withCoords.length>0)center=[parseFloat(withCoords[0].lat),parseFloat(withCoords[0].lng)];
+          else {
+            // Use city center lookup as fallback
+            const cityData=Object.values(CITY_ZIP).find(c=>c.city===state.info?.city);
+            if(cityData){
+              // Use ZIP to estimate lat/lng - center of US as last resort
+              center=[36.8529,-76.0]; // Default to VB area
+            }
+          }
         }
-        initMap(filtered,center);
+        initMap(filtered,center||[39.5,-98.35]);
       },150);
     }
   });
