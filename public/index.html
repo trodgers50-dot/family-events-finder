@@ -2089,6 +2089,17 @@ function m2(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
 
 // ── Auth handlers ─────────────────────────────────────────────────────────────
 
+async function getCityCoords(city, state, zip) {
+  try {
+    const query = city && city !== "your area" ? `${city}${state?", "+state:""}` : zip;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=0`;
+    const r = await fetch(url, {headers:{"User-Agent":"BuzzFinderApp/1.0"}});
+    const d = await r.json();
+    if(d&&d[0]) return {lat:parseFloat(d[0].lat), lng:parseFloat(d[0].lon)};
+  } catch(e){}
+  return null;
+}
+
 async function doSearch(input,regionOverride){
   const resolved=regionOverride||resolveSearch(input);
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
@@ -2096,6 +2107,13 @@ async function doSearch(input,regionOverride){
   const info=resolved.city?resolved:getRegionInfo(zip);
   const fallback=generateFallback(zip,info);
   setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
+
+  // Get city coords for distance sorting if no GPS
+  if(!state.userLat||!state.userLng){
+    getCityCoords(info.city,info.state,zip).then(coords=>{
+      if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
+    });
+  }
   
   // Fetch attendance counts for fallback events
   loadAttendanceCounts(fallback.map(e=>e.id));
@@ -2121,11 +2139,13 @@ async function doSearch(input,regionOverride){
         if(!a.date&&!b.date)return 0;
         if(!a.date)return 1;
         if(!b.date)return -1;
+        // Distance bands: 0-5mi, 5-15mi, 15-30mi, 30-60mi, 60+mi
         if(a.distanceMiles!=null&&b.distanceMiles!=null){
-          const bandA=a.distanceMiles<10?0:a.distanceMiles<25?1:a.distanceMiles<50?2:3;
-          const bandB=b.distanceMiles<10?0:b.distanceMiles<25?1:b.distanceMiles<50?2:3;
-          if(bandA!==bandB)return bandA-bandB;
-        }
+          const band=(d)=>d<5?0:d<15?1:d<30?2:d<60?3:4;
+          if(band(a.distanceMiles)!==band(b.distanceMiles))
+            return band(a.distanceMiles)-band(b.distanceMiles);
+        } else if(a.distanceMiles!=null) return -1;
+        else if(b.distanceMiles!=null) return 1;
         return a.date.localeCompare(b.date);
       });
       const fromCache=data.fromCache===true;
@@ -2746,7 +2766,10 @@ function bindEvents(){
     }
   });
   const back=document.getElementById("back-btn");
-  if(back)back.addEventListener("click",()=>setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list"}));
+  if(back)back.addEventListener("click",()=>{
+    state.userLat=null;state.userLng=null;
+    setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list"});
+  });
   document.querySelectorAll(".card-row").forEach(el=>el.addEventListener("click",()=>{
     const id=el.dataset.id;const newId=state.openId===id?null:id;
     setState({openId:newId});
