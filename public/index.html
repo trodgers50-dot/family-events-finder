@@ -2108,11 +2108,10 @@ async function doSearch(input,regionOverride){
   const fallback=generateFallback(zip,info);
   setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
 
-  // Get city coords for distance sorting if no GPS
+  // Get city coords FIRST before fetching live events so distance sort works
   if(!state.userLat||!state.userLng){
-    getCityCoords(info.city,info.state,zip).then(coords=>{
-      if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
-    });
+    const coords = await getCityCoords(info.city,info.state,zip);
+    if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
   }
   
   // Fetch attendance counts for fallback events
@@ -2136,16 +2135,15 @@ async function doSearch(input,regionOverride){
       const uniqueFallback=fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
       const merged=[...liveEvents,...uniqueFallback];
       merged.sort((a,b)=>{
-        if(!a.date&&!b.date)return 0;
-        if(!a.date)return 1;
-        if(!b.date)return -1;
-        // Distance bands: 0-5mi, 5-15mi, 15-30mi, 30-60mi, 60+mi
-        if(a.distanceMiles!=null&&b.distanceMiles!=null){
-          const band=(d)=>d<5?0:d<15?1:d<30?2:d<60?3:4;
-          if(band(a.distanceMiles)!==band(b.distanceMiles))
-            return band(a.distanceMiles)-band(b.distanceMiles);
-        } else if(a.distanceMiles!=null) return -1;
-        else if(b.distanceMiles!=null) return 1;
+        const band=(d)=>d==null?99:d<5?0:d<15?1:d<30?2:d<60?3:4;
+        const bandA=band(a.distanceMiles);
+        const bandB=band(b.distanceMiles);
+        // Sort by distance band first
+        if(bandA!==bandB) return bandA-bandB;
+        // Within same band sort by date
+        if(!a.date&&!b.date) return 0;
+        if(!a.date) return 1;
+        if(!b.date) return -1;
         return a.date.localeCompare(b.date);
       });
       const fromCache=data.fromCache===true;
@@ -2551,6 +2549,10 @@ function renderResults(){
     if(!withinDays(ev.date,maxDays))return false;
     return true;
   }).sort((a,b)=>{
+    const band=(d)=>d==null?99:d<5?0:d<15?1:d<30?2:d<60?3:4;
+    const bandA=band(a.distanceMiles);
+    const bandB=band(b.distanceMiles);
+    if(bandA!==bandB) return bandA-bandB;
     if(!a.date&&!b.date)return 0;
     if(!a.date)return 1;
     if(!b.date)return -1;
