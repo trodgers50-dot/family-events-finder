@@ -31,6 +31,14 @@ export default async function handler(req, res) {
   const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB = VB_ZIPS.includes(zip);
   const cityName = getCityFromZip(zip);
+
+  // ── Cache check ─────────────────────────────────────────────────────────────
+  // Use ZIP as cache key (not coords - same city should share cache)
+  const cacheKey = `events_${zip}`;
+  const cached = await getCached(cacheKey);
+  if (cached) {
+    return res.status(200).json({ events: cached, errors: [], fromCache: true });
+  }
   const results = { events: [], errors: [] };
 
   // Run all sources in parallel with 3 second timeout each
@@ -133,6 +141,12 @@ export default async function handler(req, res) {
       if (!b.startDate) return -1;
       return a.startDate.localeCompare(b.startDate);
     });
+  }
+
+  // ── Store in cache ──────────────────────────────────────────────────────────
+  if (results.events.length > 0) {
+    // Don't await - cache write happens in background
+    setCached(cacheKey, results.events).catch(()=>{});
   }
 
   return res.status(200).json(results);
