@@ -2131,9 +2131,22 @@ async function doSearch(input,regionOverride){
         sched:ev.subEvents?.map(s=>`${s.time} · ${s.name}`)||[],
         rating:ev.familyRating||4,who:["all"],
       }));
-      const liveNames=new Set(liveEvents.map(e=>e.name.toLowerCase().slice(0,15)));
+      // Filter out events too far away when we have coords
+      const MAX_DIST = 75;
+      const filteredLive = (state.userLat&&state.userLng)
+        ? liveEvents.filter(ev=>{
+            if(!ev.distanceMiles&&ev.lat&&ev.lng){
+              const d=Math.sqrt(Math.pow((parseFloat(ev.lat)-state.userLat)*69,2)+Math.pow((parseFloat(ev.lng)-state.userLng)*55,2));
+              return d<=MAX_DIST;
+            }
+            if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
+            return true; // keep events without any location data
+          })
+        : liveEvents;
+
+      const liveNames=new Set(filteredLive.map(e=>e.name.toLowerCase().slice(0,15)));
       const uniqueFallback=fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
-      const merged=[...liveEvents,...uniqueFallback];
+      const merged=[...filteredLive,...uniqueFallback];
       merged.sort((a,b)=>{
         const band=(d)=>d==null?99:d<5?0:d<15?1:d<30?2:d<60?3:4;
         const bandA=band(a.distanceMiles);
