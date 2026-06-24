@@ -193,6 +193,39 @@ export default async function handler(req, res) {
     });
   }
 
+  // ── Geocode events without coords and calculate distances ────────────────────
+  if (hasCoords) {
+    // First pass: calculate distance for events that already have coords
+    results.events = results.events.map(ev => {
+      if (ev.lat && ev.lng) {
+        const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
+        return { ...ev, distanceMiles: Math.round(dist * 10) / 10 };
+      }
+      return ev;
+    });
+
+    // Second pass: geocode events missing coords (up to 20, with 300ms delay)
+    const needsGeocode = results.events.filter(ev => !ev.lat || !ev.lng).slice(0, 20);
+    for (const ev of needsGeocode) {
+      const addr = ev.address || ev.location;
+      if (!addr || addr.length < 5) continue;
+      try {
+        const gurl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1&addressdetails=0`;
+        const gr = await fetch(gurl, { headers: { "User-Agent": "BuzzFinderApp/1.0" } });
+        const gd = await gr.json();
+        if (gd && gd[0]) {
+          const lat = parseFloat(gd[0].lat);
+          const lng = parseFloat(gd[0].lon);
+          const dist = calcDistance(userLat, userLng, lat, lng);
+          ev.lat = lat;
+          ev.lng = lng;
+          ev.distanceMiles = Math.round(dist * 10) / 10;
+        }
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+
   // ── Filter out events too far away ──────────────────────────────────────────
   if (hasCoords && results.events.length > 0) {
     const MAX_MILES = 75;
@@ -203,8 +236,79 @@ export default async function handler(req, res) {
         ev.distanceMiles = Math.round(dist * 10) / 10;
         return dist <= MAX_MILES;
       }
-      // For events without coords, check address for major far-away cities
+      // Events without coords after geocoding attempt = likely bad data, reject
+      // unless the address clearly mentions the search city or state
       const addr = (ev.address || ev.location || "").toLowerCase();
+      const searchCity = cityName.toLowerCase();
+      
+      // Keep if address mentions the search city
+      if (addr.includes(searchCity)) return true;
+      
+      // Keep if address is very short/generic (no city info to judge)
+      if (addr.length < 10) return true;
+      
+      // Extract state from address (e.g. "Venue, City, PA" -> "PA")
+      const stateMatch = (ev.address || "").match(/,\s*([A-Z]{2})\s*(\d{5})?(\s*,\s*USA?)?$/);
+      const evState = stateMatch ? stateMatch[1] : null;
+      
+      // Get search state from ZIP prefix ranges
+      const z = parseInt(zip);
+      const searchState = 
+        (z>=20000&&z<=24699)?"VA":(z>=27000&&z<=28999)?"NC":
+        (z>=29000&&z<=29999)?"SC":(z>=30000&&z<=31999)?"GA":
+        (z>=32000&&z<=34999)?"FL":(z>=35000&&z<=36999)?"AL":
+        (z>=37000&&z<=38599)?"TN":(z>=38600&&z<=39999)?"MS":
+        (z>=40000&&z<=42999)?"KY":(z>=43000&&z<=45999)?"OH":
+        (z>=46000&&z<=47999)?"IN":(z>=48000&&z<=49999)?"MI":
+        (z>=50000&&z<=52999)?"IA":(z>=53000&&z<=54999)?"WI":
+        (z>=55000&&z<=56999)?"MN":(z>=57000&&z<=57999)?"SD":
+        (z>=58000&&z<=58999)?"ND":(z>=59000&&z<=59999)?"MT":
+        (z>=60000&&z<=62999)?"IL":(z>=63000&&z<=65999)?"MO":
+        (z>=66000&&z<=67999)?"KS":(z>=68000&&z<=69999)?"NE":
+        (z>=70000&&z<=71599)?"LA":(z>=71600&&z<=72999)?"AR":
+        (z>=73000&&z<=74999)?"OK":(z>=75000&&z<=79999)?"TX":
+        (z>=80000&&z<=81999)?"CO":(z>=82000&&z<=83199)?"WY":
+        (z>=83200&&z<=83999)?"ID":(z>=84000&&z<=84999)?"UT":
+        (z>=85000&&z<=86999)?"AZ":(z>=87000&&z<=88499)?"NM":
+        (z>=88900&&z<=89999)?"NV":(z>=90000&&z<=96699)?"CA":
+        (z>=97000&&z<=97999)?"OR":(z>=98000&&z<=99499)?"WA":
+        (z>=15000&&z<=19699)?"PA":(z>=10000&&z<=14999)?"NY":
+        (z>=1000&&z<=2799)?"MA":(z>=6000&&z<=6999)?"CT":
+        (z>=7000&&z<=8999)?"NJ":(z>=19700&&z<=19999)?"DE":
+        (z>=20600&&z<=21999)?"MD":(z>=2800&&z<=2999)?"RI":
+        (z>=3000&&z<=3899)?"NH":(z>=3900&&z<=4999)?"ME":
+        (z>=5000&&z<=5999)?"VT":null;
+
+      // If event has a state in its address and it doesn't match search state,
+      // check if it's a neighboring state - if not, reject it
+      if (evState && searchState && evState !== searchState) {
+        const NEIGHBORS = {
+          "PA":["NY","NJ","DE","MD","WV","OH"],
+          "VA":["MD","WV","NC","TN","KY","DC"],
+          "NC":["VA","TN","SC","GA"],
+          "SC":["NC","GA"],
+          "GA":["FL","AL","TN","NC","SC"],
+          "FL":["GA","AL"],
+          "AL":["FL","GA","TN","MS"],
+          "TN":["KY","VA","NC","GA","AL","MS","AR","MO"],
+          "OH":["PA","WV","KY","IN","MI"],
+          "IN":["IL","KY","OH","MI"],
+          "MI":["OH","IN","WI"],
+          "WI":["MN","IA","IL","MI"],
+          "MN":["WI","IA","SD","ND"],
+          "IL":["WI","IN","KY","MO","IA"],
+          "MO":["IA","IL","KY","TN","AR","OK","KS","NE"],
+          "TX":["NM","OK","AR","LA"],
+          "CA":["OR","NV","AZ"],
+          "WA":["OR","ID"],
+          "OR":["WA","ID","NV","CA"],
+          "CO":["WY","NE","KS","OK","NM","AZ","UT"],
+          "NY":["PA","NJ","CT","MA","VT"],
+          "NJ":["NY","PA","DE"],
+        };
+        const neighbors = NEIGHBORS[searchState] || [];
+        if (!neighbors.includes(evState)) return false;
+      }
       const MAJOR_CITIES = [
         "philadelphia","new york","brooklyn","manhattan","chicago","los angeles",
         "houston","phoenix","san antonio","san diego","dallas","san jose",
