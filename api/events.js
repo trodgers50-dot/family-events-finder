@@ -65,19 +65,21 @@ export default async function handler(req, res) {
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res] = await Promise.allSettled([
-    fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 3000),
+    fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 8000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
     isVB ? fetchWithTimeout(fetchVirginiaBeach(), 3000) : Promise.resolve([]),
-    fetchWithTimeout(fetchPredictHQ(zip, userLat, userLng), 4000),
+    fetchWithTimeout(fetchPredictHQ(zip, userLat, userLng), 8000),
     fetchWithTimeout(fetchSerpAPI2(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI3(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI4(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI5(cityName, zip, stateName, userLat, userLng), 3000),
   ]);
 
-  if (tmRes.status === "fulfilled") results.events.push(...tmRes.value);
-  else results.errors.push("Ticketmaster: " + tmRes.reason?.message);
+  if (tmRes.status === "fulfilled") { 
+    console.log(`TM: ${tmRes.value.length} events`);
+    results.events.push(...tmRes.value);
+  } else results.errors.push("Ticketmaster: " + tmRes.reason?.message);
 
   if (serpRes.status === "fulfilled") results.events.push(...serpRes.value);
   else results.errors.push("SerpAPI: " + serpRes.reason?.message);
