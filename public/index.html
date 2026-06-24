@@ -479,7 +479,7 @@ let state={
   screen:"home",searchInput:"",zip:"",events:[],info:null,
   openId:null,typeFilter:"All",whoFilter:"all",dateRange:"3months",
   freeOnly:false,favs:new Set(),toast:"",gpsLoading:false,
-  loading:false,liveLoading:false,liveData:false,
+  loading:false,liveLoading:false,liveData:false,fromCache:false,
   suggestions:[],searchError:"",userLat:null,userLng:null,
   reviews:{},reviewInput:{},reviewLoading:{},
   attendanceCounts:{},going:new Set(),
@@ -534,9 +534,10 @@ async function doSearch(input,regionOverride){
         }
         return a.date.localeCompare(b.date);
       });
-      setState({events:merged,liveLoading:false,liveData:true});
+      const fromCache=data.fromCache===true;
+      setState({events:merged,liveLoading:false,liveData:true,fromCache});
       loadAttendanceCounts(merged.map(e=>e.id));
-      showToast(`✓ ${liveEvents.length} live events loaded`);
+      showToast(fromCache?`⚡ ${liveEvents.length} events loaded instantly`:`✓ ${liveEvents.length} live events loaded`);
     }else{
       setState({liveLoading:false,liveData:false});
     }
@@ -1041,7 +1042,7 @@ function renderResults(){
         <div id="back-btn" style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">←</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:16px;letter-spacing:-0.3px">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:1px">${filtered.length} things to do · ${selectedRange?.label} · ${state.liveData?'<span style="color:#6ee7b7">● Live</span>':'<span style="color:rgba(255,255,255,0.2)">● Preview</span>'}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-top:1px">${filtered.length} things to do · ${selectedRange?.label} · ${state.liveData?(state.fromCache?'<span style="color:#f59e0b">⚡ Cached</span>':'<span style="color:#6ee7b7">● Live</span>'):'<span style="color:rgba(255,255,255,0.2)">● Preview</span>'}</div>
         </div>
         <!-- View toggle -->
         <div style="display:flex;background:rgba(255,255,255,0.06);border-radius:10px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;flex-shrink:0">
