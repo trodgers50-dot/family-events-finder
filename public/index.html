@@ -2120,7 +2120,10 @@ async function doSearch(input,regionOverride){
   // Phase 2 - live events
   try{
     const coordParams=state.userLat&&state.userLng?`&lat=${state.userLat}&lng=${state.userLng}`:"";
-    const res=await fetch(`${PROXY_URL}?zip=${zip}${coordParams}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(()=>controller.abort(), 12000); // 12s max
+    const res=await fetch(`${PROXY_URL}?zip=${zip}${coordParams}`, {signal:controller.signal});
+    clearTimeout(timeout);
     if(!res.ok)throw new Error("API error");
     const data=await res.json();
     if(data.events&&data.events.length>0){
