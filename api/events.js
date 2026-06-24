@@ -1,7 +1,7 @@
 // api/events.js — Buzz Multi-Source Event Proxy (Fast version)
 // Sources run in parallel with aggressive timeouts
 
-const TM_KEY    = process.env.TM_KEY;
+const TM_KEY    = process.env.TM_KEY    || "";
 const SERP_KEY  = process.env.SERP_KEY;
 const RAPID_KEY = process.env.RAPID_KEY;
 
@@ -34,7 +34,7 @@ export default async function handler(req, res) {
 
   // ── Cache check ─────────────────────────────────────────────────────────────
   // Use ZIP as cache key (not coords - same city should share cache)
-  const cacheKey = `events_${zip}`;
+  const cacheKey = `events_v2_${zip}`; // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
     return res.status(200).json({ events: cached, errors: [], fromCache: true });
@@ -154,6 +154,7 @@ export default async function handler(req, res) {
 
 // ── Ticketmaster ──────────────────────────────────────────────────────────────
 async function fetchTicketmaster(zip, userLat, userLng) {
+  if (!TM_KEY) return [];
   const hasCoords = userLat && userLng;
   const VB_ZIPS_TM = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB_TM = VB_ZIPS_TM.includes(zip);
@@ -207,6 +208,8 @@ async function fetchTicketmaster(zip, userLat, userLng) {
         : "See site",
       url: tm.url,
       source: "Ticketmaster",
+      lat: venue?.location?.latitude || null,
+      lng: venue?.location?.longitude || null,
       subEvents: (tm._embedded?.attractions || []).slice(0, 3).map(a => ({
         time: tm.dates?.start?.localTime?.slice(0, 5) || "TBD",
         name: a.name,
