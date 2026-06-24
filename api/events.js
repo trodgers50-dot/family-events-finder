@@ -1,9 +1,44 @@
 // api/events.js — Buzz Multi-Source Event Proxy (Fast version)
 // Sources run in parallel with aggressive timeouts
 
-const TM_KEY    = process.env.TM_KEY    || "";
-const SERP_KEY  = process.env.SERP_KEY;
-const RAPID_KEY = process.env.RAPID_KEY;
+const TM_KEY       = process.env.TM_KEY    || "";
+const SERP_KEY     = process.env.SERP_KEY  || "";
+const RAPID_KEY    = process.env.RAPID_KEY || "";
+const PHQ_KEY      = process.env.PHQ_KEY   || "";
+const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
+const SUPABASE_KEY = "sb_publishable_U5KBIkFT7l0jSSD8QaYJPQ_dEZWQJ63";
+
+// ── Cache helpers ─────────────────────────────────────────────────────────────
+async function getCached(cacheKey) {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/event_cache?cache_key=eq.${encodeURIComponent(cacheKey)}&select=events,expires_at`,
+      { headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` } }
+    );
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d || !d[0]) return null;
+    if (new Date(d[0].expires_at) < new Date()) return null;
+    console.log(`Cache HIT for ${cacheKey}`);
+    return d[0].events;
+  } catch(e) { return null; }
+}
+
+async function setCached(cacheKey, events) {
+  try {
+    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+    await fetch(`${SUPABASE_URL}/rest/v1/event_cache`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({ cache_key: cacheKey, events, expires_at: expiresAt })
+    });
+  } catch(e) { console.log("Cache write failed:", e.message); }
+}
 
 // Wrap any fetch with a timeout so slow APIs don't hold up results
 async function fetchWithTimeout(promise, ms = 3000) {
@@ -148,6 +183,11 @@ export default async function handler(req, res) {
   // ── Store in cache ──────────────────────────────────────────────────────────
   if (results.events.length > 0) {
     // Don't await - cache write happens in background
+    setCached(cacheKey, results.events).catch(()=>{});
+  }
+
+  // Store in cache for next time
+  if (results.events.length > 0) {
     setCached(cacheKey, results.events).catch(()=>{});
   }
 
