@@ -1975,6 +1975,23 @@ const TYPE_META={
   Outdoor:{color:"#84cc16",icon:"🌲"},Other:{color:"#94a3b8",icon:"●"},
 };
 function m(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
+
+function haversine(lat1,lng1,lat2,lng2){
+  const R=3959,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function getEventDistance(ev){
+  if(!state.userLat||!state.userLng) return null;
+  const lat=parseFloat(ev.lat||ev.distanceMiles!=null?null:null);
+  if(ev.distanceMiles!=null) return ev.distanceMiles;
+  if(ev.lat&&ev.lng){
+    const d=haversine(state.userLat,state.userLng,parseFloat(ev.lat),parseFloat(ev.lng));
+    return Math.round(d*10)/10;
+  }
+  return null;
+}
 function san(str){
   if(!str)return"";
   return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
@@ -2151,12 +2168,18 @@ async function doSearch(input,regionOverride){
       const uniqueFallback=fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
       const merged=[...filteredLive,...uniqueFallback];
       merged.sort((a,b)=>{
-        const band=(d)=>d==null?99:d<5?0:d<15?1:d<30?2:d<60?3:4;
-        const bandA=band(a.distanceMiles);
-        const bandB=band(b.distanceMiles);
-        // Sort by distance band first
-        if(bandA!==bandB) return bandA-bandB;
-        // Within same band sort by date
+        const distA=(state.userLat&&state.userLng&&a.lat&&a.lng)
+          ?haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
+          :(a.distanceMiles!=null?a.distanceMiles:null);
+        const distB=(state.userLat&&state.userLng&&b.lat&&b.lng)
+          ?haversine(state.userLat,state.userLng,parseFloat(b.lat),parseFloat(b.lng))
+          :(b.distanceMiles!=null?b.distanceMiles:null);
+        if(distA!=null&&distB==null) return -1;
+        if(distA==null&&distB!=null) return 1;
+        if(distA!=null&&distB!=null){
+          const band=(d)=>d<5?0:d<15?1:d<30?2:d<60?3:4;
+          if(band(distA)!==band(distB)) return band(distA)-band(distB);
+        }
         if(!a.date&&!b.date) return 0;
         if(!a.date) return 1;
         if(!b.date) return -1;
@@ -2563,12 +2586,28 @@ function renderResults(){
     if(state.freeOnly&&ev.cost!=="Free")return false;
     if(state.whoFilter!=="all"&&ev.who&&!ev.who.includes(state.whoFilter)&&!ev.who.includes("all"))return false;
     if(!withinDays(ev.date,maxDays))return false;
+    // Filter out events too far away when we have coords
+    if(state.userLat&&state.userLng&&ev.lat&&ev.lng){
+      const d=haversine(state.userLat,state.userLng,parseFloat(ev.lat),parseFloat(ev.lng));
+      if(d>75)return false;
+    }
     return true;
   }).sort((a,b)=>{
-    const band=(d)=>d==null?99:d<5?0:d<15?1:d<30?2:d<60?3:4;
-    const bandA=band(a.distanceMiles);
-    const bandB=band(b.distanceMiles);
-    if(bandA!==bandB) return bandA-bandB;
+    // Calculate real-time distances
+    const distA = (state.userLat&&state.userLng&&a.lat&&a.lng)
+      ? haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
+      : (a.distanceMiles!=null?a.distanceMiles:null);
+    const distB = (state.userLat&&state.userLng&&b.lat&&b.lng)
+      ? haversine(state.userLat,state.userLng,parseFloat(b.lat),parseFloat(b.lng))
+      : (b.distanceMiles!=null?b.distanceMiles:null);
+    // Events with known distance sort before events without
+    if(distA!=null&&distB==null) return -1;
+    if(distA==null&&distB!=null) return 1;
+    if(distA!=null&&distB!=null){
+      const band=(d)=>d<5?0:d<15?1:d<30?2:d<60?3:4;
+      if(band(distA)!==band(distB)) return band(distA)-band(distB);
+    }
+    // Within same distance band, sort by date
     if(!a.date&&!b.date)return 0;
     if(!a.date)return 1;
     if(!b.date)return -1;
