@@ -69,10 +69,23 @@ export default async function handler(req, res) {
 
   // ── Cache check ─────────────────────────────────────────────────────────────
   // Use ZIP as cache key (not coords - same city should share cache)
-  const cacheKey = `events_v3_${zip}`; // v3 = distance filtered // v2 = with working TM
+  // Include rounded coords in cache key so location-based searches get proper filtering
+  const coordKey = (userLat && userLng) 
+    ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
+    : "";
+  const cacheKey = `events_v3_${zip}${coordKey}`; // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
-    return res.status(200).json({ events: cached, errors: [], fromCache: true });
+    // Apply distance filter even on cached results
+    let cachedEvents = cached;
+    if (hasCoords) {
+      cachedEvents = cached.filter(ev => {
+        if (!ev.lat || !ev.lng) return true;
+        const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
+        return dist <= 75;
+      });
+    }
+    return res.status(200).json({ events: cachedEvents, errors: [], fromCache: true });
   }
   const results = { events: [], errors: [] };
 
@@ -184,9 +197,47 @@ export default async function handler(req, res) {
   if (hasCoords && results.events.length > 0) {
     const MAX_MILES = 75;
     results.events = results.events.filter(ev => {
-      if (!ev.lat || !ev.lng) return true; // keep events without coords
-      const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
-      return dist <= MAX_MILES;
+      // Check by coordinates if available
+      if (ev.lat && ev.lng) {
+        const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
+        ev.distanceMiles = Math.round(dist * 10) / 10;
+        return dist <= MAX_MILES;
+      }
+      // For events without coords, check address for major far-away cities
+      const addr = (ev.address || ev.location || "").toLowerCase();
+      const MAJOR_CITIES = [
+        "philadelphia","new york","brooklyn","manhattan","chicago","los angeles",
+        "houston","phoenix","san antonio","san diego","dallas","san jose",
+        "austin","san francisco","seattle","denver","boston","baltimore",
+        "miami","atlanta","minneapolis","portland","las vegas","memphis",
+        "louisville","pittsburgh","cincinnati","cleveland","orlando","tampa"
+      ];
+      // If the event address contains a major city and our search city is different,
+      // check if that city is plausibly nearby
+      for (const city of MAJOR_CITIES) {
+        if (addr.includes(city) && !cityName.toLowerCase().includes(city)) {
+          // Reject if it's a well-known distant city in a clearly different area
+          const CITY_COORDS = {
+            "philadelphia":[39.95,-75.16],"new york":[40.71,-74.00],
+            "chicago":[41.88,-87.63],"los angeles":[34.05,-118.24],
+            "houston":[29.76,-95.37],"miami":[25.77,-80.19],
+            "atlanta":[33.75,-84.39],"seattle":[47.61,-122.33],
+            "dallas":[32.78,-96.80],"boston":[42.36,-71.06],
+            "denver":[39.74,-104.98],"phoenix":[33.45,-112.07],
+            "portland":[45.52,-122.68],"las vegas":[36.17,-115.14],
+            "minneapolis":[44.98,-93.27],"tampa":[27.95,-82.46],
+            "orlando":[28.54,-81.38],"baltimore":[39.29,-76.61],
+            "pittsburgh":[40.44,-79.99],"cleveland":[41.50,-81.69],
+            "cincinnati":[39.10,-84.51],"memphis":[35.15,-90.05],
+          };
+          if (CITY_COORDS[city]) {
+            const [cLat, cLng] = CITY_COORDS[city];
+            const dist = calcDistance(userLat, userLng, cLat, cLng);
+            if (dist > MAX_MILES) return false;
+          }
+        }
+      }
+      return true;
     });
   }
 
