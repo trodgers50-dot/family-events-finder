@@ -2593,14 +2593,13 @@ function renderResults(){
         const d=haversine(state.userLat,state.userLng,parseFloat(ev.lat),parseFloat(ev.lng));
         if(d>75)return false;
       } else {
-        // No coords - only keep if address mentions search city or state
+        // No coords - ONLY keep if address explicitly mentions the search city
         const addr=(ev.address||ev.location||"").toLowerCase();
         const city=(state.info?.city||"").toLowerCase();
-        const st=(state.info?.state||"").toLowerCase();
         const hasCity = city.length>3 && addr.includes(city);
-        const hasSt = st.length>1 && addr.includes(", "+st);
         const hasZip = state.zip && addr.includes(state.zip);
-        if(!hasCity&&!hasSt&&!hasZip&&addr.length>15) return false;
+        // If address is long enough to contain a city but doesn't match - reject it
+        if(addr.length>15 && !hasCity && !hasZip) return false;
       }
     }
     return true;
