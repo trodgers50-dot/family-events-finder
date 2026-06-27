@@ -2091,7 +2091,7 @@ let state={
   screen:"home",searchInput:"",zip:"",events:[],info:null,
   openId:null,typeFilter:"All",whoFilter:"all",dateRange:"3months",
   freeOnly:false,favs:new Set(),toast:"",gpsLoading:false,
-  loading:false,liveLoading:false,liveData:false,fromCache:false,
+  loading:false,liveLoading:false,liveData:false,fromCache:false,coordsLoading:false,
   suggestions:[],searchError:"",userLat:null,userLng:null,
   reviews:{},reviewInput:{},reviewLoading:{},
   attendanceCounts:{},going:new Set(),
@@ -2123,14 +2123,16 @@ async function doSearch(input,regionOverride){
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
-  const fallback=generateFallback(zip,info);
-  setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
-
-  // Get city coords FIRST before fetching live events so distance sort works
+  // Show loading spinner while getting city coords
   if(!state.userLat||!state.userLng){
+    setState({coordsLoading:true,screen:"results",info,zip,events:[],searchError:""});
     const coords = await getCityCoords(info.city,info.state,zip);
     if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
+    setState({coordsLoading:false});
   }
+
+  const fallback=generateFallback(zip,info);
+  setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
   
   // Fetch attendance counts for fallback events
   loadAttendanceCounts(fallback.map(e=>e.id));
@@ -2570,6 +2572,33 @@ function renderHome(){
         </div>
       </div>
 
+      <!-- Browse by category -->
+      <div style="margin-bottom:20px">
+        <div style="font-size:10px;color:rgba(255,255,255,0.18);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Browse by category</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          ${[
+            {type:"Music",icon:"🎵",color:"#ec4899"},
+            {type:"Festival",icon:"🎪",color:"#f97316"},
+            {type:"Food",icon:"🍴",color:"#eab308"},
+            {type:"Outdoor",icon:"🌲",color:"#84cc16"},
+            {type:"Arts",icon:"🎨",color:"#a855f7"},
+            {type:"Sports",icon:"🏆",color:"#22c55e"},
+            {type:"Nightlife",icon:"🌙",color:"#e879f9"},
+            {type:"Family",icon:"👨‍👩‍👧",color:"#3b82f6"},
+            {type:"Market",icon:"🌿",color:"#22c55e"},
+            {type:"Community",icon:"◎",color:"#14b8a6"},
+            {type:"Brewery",icon:"◈",color:"#8b5cf6"},
+            {type:"Kids",icon:"✦",color:"#06b6d4"},
+          ].map(cat=>`
+            <div class="cat-btn" data-type="${cat.type}" style="background:${cat.color}12;border:1px solid ${cat.color}25;border-radius:12px;padding:10px 6px;text-align:center;cursor:pointer;transition:all 0.15s">
+              <div style="font-size:20px;margin-bottom:4px">${cat.icon}</div>
+              <div style="font-size:10px;color:${cat.color};font-weight:600">${cat.type}</div>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <!-- Popular cities -->
       <div>
         <div style="font-size:10px;color:rgba(255,255,255,0.18);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Popular</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -2594,13 +2623,14 @@ function renderResults(){
         const d=haversine(state.userLat,state.userLng,parseFloat(ev.lat),parseFloat(ev.lng));
         if(d>75)return false;
       } else {
-        // No coords - ONLY keep if address explicitly mentions the search city
+        // No coords - strict city matching
         const addr=(ev.address||ev.location||"").toLowerCase();
         const city=(state.info?.city||"").toLowerCase();
         const hasCity = city.length>3 && addr.includes(city);
         const hasZip = state.zip && addr.includes(state.zip);
-        // If address is long enough to contain a city but doesn't match - reject it
-        if(addr.length>15 && !hasCity && !hasZip) return false;
+        const isLocal = ev.source==="Local"; // keep generated fallback events
+        // Reject anything with an address that doesn't match our city
+        if(!isLocal && addr.length>8 && !hasCity && !hasZip) return false;
       }
     }
     return true;
@@ -2630,10 +2660,17 @@ function renderResults(){
   const weekendCount=filtered.filter(e=>e.isWeekend).length;
   const selectedRange=DATE_RANGES.find(d=>d.id===state.dateRange);
 
-  if(state.loading){
-    return`<div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
-      <div style="width:40px;height:40px;border-radius:50%;border:3px solid rgba(99,102,241,0.15);border-top-color:#6366f1;animation:spin 0.8s linear infinite"></div>
-      <p style="color:rgba(255,255,255,0.35);font-size:14px">Finding things to do in ${state.info?.city||state.zip}…</p>
+  if(state.loading||state.coordsLoading){
+    return`<div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px">
+      <div style="position:relative;width:60px;height:60px">
+        <div style="position:absolute;inset:0;border-radius:50%;border:3px solid rgba(99,102,241,0.1);border-top-color:#6366f1;animation:spin 0.8s linear infinite"></div>
+        <div style="position:absolute;inset:8px;border-radius:50%;border:3px solid rgba(236,72,153,0.1);border-top-color:#ec4899;animation:spin 1.2s linear infinite reverse"></div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px">📍</div>
+      </div>
+      <div style="text-align:center">
+        <p style="color:#f1f5f9;font-size:15px;font-weight:600;margin-bottom:6px">Finding events near you</p>
+        <p style="color:rgba(255,255,255,0.3);font-size:13px">${state.info?.city||state.zip}${state.info?.state?", "+state.info.state:""}</p>
+      </div>
     </div>`;
   }
 
@@ -2806,6 +2843,11 @@ function bindEvents(){
   if(go)go.addEventListener("click",()=>{state.suggestions=[];renderSuggestions([]);doSearch(state.searchInput);});
   document.querySelectorAll(".who-btn").forEach(el=>el.addEventListener("click",()=>setState({whoFilter:el.dataset.who})));
   document.querySelectorAll(".range-btn").forEach(el=>el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();}));
+  document.querySelectorAll(".cat-btn").forEach(el=>el.addEventListener("click",()=>{
+    const type=el.dataset.type;
+    if(state.screen==="results"){state.typeFilter=type;render();}
+    else{showToast(`Search a city first, then filter by ${type}!`);document.getElementById("search-input")?.focus();}
+  }));
   document.querySelectorAll(".quick-city").forEach(el=>el.addEventListener("click",()=>{state.searchInput=el.dataset.city;doSearch(el.dataset.city);}));
   const listBtn=document.getElementById("list-view-btn");
   const mapBtn=document.getElementById("map-view-btn");
