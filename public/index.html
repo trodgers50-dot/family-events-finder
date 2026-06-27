@@ -2093,7 +2093,7 @@ let state={
   freeOnly:false,favs:new Set(),toast:"",gpsLoading:false,
   loading:false,liveLoading:false,liveData:false,fromCache:false,coordsLoading:false,
   suggestions:[],searchError:"",userLat:null,userLng:null,
-  reviews:{},reviewInput:{},reviewLoading:{},
+  reviews:{},reviewInput:{},reviewLoading:{},pendingTypeFilter:null,
   attendanceCounts:{},going:new Set(),
   session:null,user:null,
   authModal:null,authError:"",authLoading:false,
@@ -2132,7 +2132,8 @@ async function doSearch(input,regionOverride){
   }
 
   const fallback=generateFallback(zip,info);
-  setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
+  const applyType = state.pendingTypeFilter || "All";
+  setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:applyType,whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list",pendingTypeFilter:null});
   
   // Fetch attendance counts for fallback events
   loadAttendanceCounts(fallback.map(e=>e.id));
@@ -2577,6 +2578,7 @@ function renderHome(){
         <div style="font-size:10px;color:rgba(255,255,255,0.18);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Browse by category</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
           ${[
+            {type:"All",icon:"⚡",color:"#6366f1"},
             {type:"Music",icon:"🎵",color:"#ec4899"},
             {type:"Festival",icon:"🎪",color:"#f97316"},
             {type:"Food",icon:"🍴",color:"#eab308"},
@@ -2590,21 +2592,20 @@ function renderHome(){
             {type:"Brewery",icon:"◈",color:"#8b5cf6"},
             {type:"Kids",icon:"✦",color:"#06b6d4"},
           ].map(cat=>`
-            <div class="cat-btn" data-type="${cat.type}" style="background:${cat.color}12;border:1px solid ${cat.color}25;border-radius:12px;padding:10px 6px;text-align:center;cursor:pointer;transition:all 0.15s">
+            <div class="cat-btn" data-type="${cat.type}" style="background:${state.pendingTypeFilter===cat.type?cat.color+'30':cat.color+'12'};border:1.5px solid ${state.pendingTypeFilter===cat.type?cat.color:cat.color+'25'};border-radius:12px;padding:10px 6px;text-align:center;cursor:pointer;transition:all 0.15s;transform:${state.pendingTypeFilter===cat.type?'scale(1.05)':'scale(1)'}">
               <div style="font-size:20px;margin-bottom:4px">${cat.icon}</div>
-              <div style="font-size:10px;color:${cat.color};font-weight:600">${cat.type}</div>
+              <div style="font-size:10px;color:${cat.color};font-weight:700">${cat.type}</div>
             </div>
           `).join("")}
         </div>
       </div>
 
-      <!-- Popular cities -->
-      <div>
-        <div style="font-size:10px;color:rgba(255,255,255,0.18);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Popular</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${["Virginia Beach","New York","Miami","Chicago","Nashville","Austin","Atlanta","Seattle","Las Vegas","New Orleans","Denver","Boston","San Diego","Portland","Philadelphia"].map(c=>`<div class="quick-city" data-city="${c}" style="padding:5px 11px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.05)">${c}</div>`).join("")}
-        </div>
-      </div>
+      ${state.pendingTypeFilter?`
+      <div style="text-align:center;padding:8px;margin-bottom:4px;background:rgba(99,102,241,0.08);border-radius:10px;border:1px solid rgba(99,102,241,0.15)">
+        <span style="font-size:12px;color:#a5b4fc">✓ ${state.pendingTypeFilter} selected — now search a city or tap a popular one below</span>
+      </div>`:""}
+
+
     </div>
   </div>`;
 }
@@ -2845,8 +2846,15 @@ function bindEvents(){
   document.querySelectorAll(".range-btn").forEach(el=>el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();}));
   document.querySelectorAll(".cat-btn").forEach(el=>el.addEventListener("click",()=>{
     const type=el.dataset.type;
-    if(state.screen==="results"){state.typeFilter=type;render();}
-    else{showToast(`Search a city first, then filter by ${type}!`);document.getElementById("search-input")?.focus();}
+    if(state.screen==="results"){
+      state.typeFilter = type==="All" ? "All" : type;
+      render();
+    } else {
+      // All = clear selection, others = select
+      state.pendingTypeFilter = type==="All" ? null : (state.pendingTypeFilter===type ? null : type);
+      render();
+      setTimeout(()=>document.getElementById("search-input")?.focus(),100);
+    }
   }));
   document.querySelectorAll(".quick-city").forEach(el=>el.addEventListener("click",()=>{state.searchInput=el.dataset.city;doSearch(el.dataset.city);}));
   const listBtn=document.getElementById("list-view-btn");
