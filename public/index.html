@@ -2735,7 +2735,7 @@ const filtered=state.events.filter(ev=>{
   const weekendCount=filtered.filter(e=>e.isWeekend).length;
   const selectedRange=DATE_RANGES.find(d=>d.id===state.dateRange);
 
-  if(state.loading||state.coordsLoading){
+  if(state.loading||state.coordsLoading||state.liveLoading){
     return`<div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px">
       <div style="position:relative;width:60px;height:60px">
         <div style="position:absolute;inset:0;border-radius:50%;border:3px solid rgba(99,102,241,0.1);border-top-color:#6366f1;animation:spin 0.8s linear infinite"></div>
@@ -2743,7 +2743,7 @@ const filtered=state.events.filter(ev=>{
         <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px">📍</div>
       </div>
       <div style="text-align:center">
-        <p style="color:#f1f5f9;font-size:15px;font-weight:600;margin-bottom:6px">Finding events near you</p>
+        <p style="color:#f1f5f9;font-size:15px;font-weight:600;margin-bottom:6px">${state.liveLoading?"Loading events":"Finding events near you"}</p>
         <p style="color:rgba(255,255,255,0.3);font-size:13px">${state.info?.city||state.zip}${state.info?.state?", "+state.info.state:""}</p>
       </div>
     </div>`;
