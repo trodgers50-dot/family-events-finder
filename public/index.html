@@ -2371,13 +2371,6 @@ async function initMap(events, center){
 
 function render(){
   document.getElementById("root").innerHTML=state.screen==="home"?renderHome():renderResults();
-  // Always render submit modal in DOM, show/hide via CSS
-  const existingSubmit = document.getElementById("submit-overlay");
-  if(existingSubmit) existingSubmit.remove();
-  const modalDiv = document.createElement("div");
-  modalDiv.innerHTML = renderSubmitModal();
-  document.body.appendChild(modalDiv.firstElementChild);
-  bindSubmitEvents();
   bindEvents();
   // Only create modal if it doesn't exist yet
   const existingModal = document.getElementById("auth-modal-overlay");
@@ -2567,7 +2560,7 @@ async function handleModalAuth(overlay){
 
 
 function renderSubmitModal(){
-  const display = state.submitScreen ? "flex" : "none";
+  const display = "flex";
   const types=["Community","Music","Festival","Food","Outdoor","Arts","Sports","Nightlife","Family","Market","Brewery","Kids"];
   return `
   <div style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.85);display:${display};align-items:flex-end;justify-content:center" id="submit-overlay">
@@ -2941,10 +2934,18 @@ function renderSuggestions(sugg){
 
 function bindSubmitEvents(){
   const closeSubmit=document.getElementById("close-submit");
-  if(closeSubmit)closeSubmit.addEventListener("click",()=>setState({submitScreen:false}));
+  if(closeSubmit)closeSubmit.addEventListener("click",()=>{
+    state.submitScreen=false;
+    document.getElementById("submit-overlay")?.remove();
+  });
 
   const overlay=document.getElementById("submit-overlay");
-  if(overlay)overlay.addEventListener("click",(e)=>{if(e.target===overlay)setState({submitScreen:false});});
+  if(overlay)overlay.addEventListener("click",(e)=>{
+    if(e.target===overlay){
+      state.submitScreen=false;
+      overlay.remove();
+    }
+  });
 
   const submitAnother=document.getElementById("submit-another");
   if(submitAnother)submitAnother.addEventListener("click",()=>setState({submitSuccess:false,submitForm:{name:"",type:"Community",date:"",time:"",location:"",address:"",city:state.info?.city||"",state:state.info?.state||"",description:"",cost:"Free",url:""}}));
@@ -2983,7 +2984,14 @@ function bindSubmitEvents(){
         body:JSON.stringify(payload)
       });
       if(!r.ok)throw new Error("Failed");
-      setState({submitLoading:false,submitSuccess:true});
+      state.submitLoading=false;
+      state.submitSuccess=true;
+      const existing2=document.getElementById("submit-overlay");
+      if(existing2) existing2.remove();
+      const div2=document.createElement("div");
+      div2.innerHTML=renderSubmitModal();
+      document.body.appendChild(div2.firstElementChild);
+      bindSubmitEvents();
     }catch(e){
       setState({submitLoading:false});
       showToast("Something went wrong. Please try again.");
@@ -3045,10 +3053,17 @@ function bindEvents(){
     setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list"});
   });
 
-  // Submit event button
+  // Submit event button - directly inject modal
   const submitBtn=document.getElementById("submit-btn");
   if(submitBtn)submitBtn.addEventListener("click",()=>{
-    setState({submitScreen:true,submitSuccess:false});
+    state.submitScreen=true;
+    state.submitSuccess=false;
+    const existing=document.getElementById("submit-overlay");
+    if(existing) existing.remove();
+    const div=document.createElement("div");
+    div.innerHTML=renderSubmitModal();
+    document.body.appendChild(div.firstElementChild);
+    bindSubmitEvents();
   });
   document.querySelectorAll(".card-row").forEach(el=>el.addEventListener("click",()=>{
     const id=el.dataset.id;const newId=state.openId===id?null:id;
