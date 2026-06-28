@@ -2107,6 +2107,36 @@ function m2(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
 
 // ── Auth handlers ─────────────────────────────────────────────────────────────
 
+async function fetchSubmittedEvents(city, zip) {
+  try {
+    const cityFilter = city && city !== "your area" 
+      ? `city=ilike.${encodeURIComponent(city)}` 
+      : `zip=eq.${zip}`;
+    const today = new Date().toISOString().split("T")[0];
+    const url = `${SUPABASE_URL}/rest/v1/submitted_events?${cityFilter}&start_date=gte.${today}&approved=eq.true&select=*&order=start_date.asc&limit=50`;
+    const r = await fetch(url, {
+      headers:{"apikey":SUPABASE_KEY,"Authorization":`Bearer ${SUPABASE_KEY}`}
+    });
+    if(!r.ok) return [];
+    const events = await r.json();
+    return events.map(ev=>({
+      id:"sub_"+ev.id,
+      name:ev.name,
+      type:ev.event_type||"Community",
+      startDate:ev.start_date,
+      date:ev.start_date,
+      location:ev.location||ev.city,
+      address:ev.address?`${ev.address}, ${ev.city}, ${ev.state}`:`${ev.city}, ${ev.state||""}`,
+      description:ev.description||"",
+      cost:ev.cost||"Free",
+      url:ev.url||"",
+      source:"Local",
+      who:["all"],
+      familyRating:5,
+    }));
+  } catch(e){ return []; }
+}
+
 async function getCityCoords(city, state, zip) {
   try {
     // Use ZIP code first for accuracy - avoids ambiguous city names like "Franklin PA"
@@ -2151,8 +2181,11 @@ async function doSearch(input,regionOverride){
   try{
     const coordParams=state.userLat&&state.userLng?`&lat=${state.userLat}&lng=${state.userLng}`:"";
     const controller = new AbortController();
-    const timeout = setTimeout(()=>controller.abort(), 12000); // 12s max
-    const res=await fetch(`${PROXY_URL}?zip=${zip}${coordParams}`, {signal:controller.signal});
+    const timeout = setTimeout(()=>controller.abort(), 12000);
+    const [res, submittedEvents] = await Promise.all([
+      fetch(`${PROXY_URL}?zip=${zip}${coordParams}`, {signal:controller.signal}),
+      fetchSubmittedEvents(info?.city, zip)
+    ]);
     clearTimeout(timeout);
     if(!res.ok)throw new Error("API error");
     const data=await res.json();
@@ -2179,7 +2212,8 @@ async function doSearch(input,regionOverride){
 
       const liveNames=new Set(filteredLive.map(e=>e.name.toLowerCase().slice(0,15)));
       const uniqueFallback=fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
-      const merged=[...filteredLive,...uniqueFallback];
+      // Add submitted events first so they always show for local searches
+      const merged=[...submittedEvents,...filteredLive,...uniqueFallback];
       merged.sort((a,b)=>{
         const distA=(state.userLat&&state.userLng&&a.lat&&a.lng)
           ?haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
@@ -2525,6 +2559,89 @@ async function handleModalAuth(overlay){
 }
 
 
+function renderSubmitModal(){
+  if(!state.submitScreen) return "";
+  const types=["Community","Music","Festival","Food","Outdoor","Arts","Sports","Nightlife","Family","Market","Brewery","Kids"];
+  return `
+  <div style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.85);display:flex;align-items:flex-end;justify-content:center" id="submit-overlay">
+    <div style="background:#13131a;border-radius:20px 20px 0 0;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;padding:24px 20px 40px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <h2 style="color:#f1f5f9;font-size:18px;font-weight:700;margin:0">Add a Local Event</h2>
+        <button id="close-submit" style="background:rgba(255,255,255,0.08);border:none;color:rgba(255,255,255,0.6);width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px">✕</button>
+      </div>
+      ${state.submitSuccess ? `
+        <div style="text-align:center;padding:40px 0">
+          <div style="font-size:48px;margin-bottom:16px">🎉</div>
+          <p style="color:#f1f5f9;font-size:16px;font-weight:600;margin-bottom:8px">Event submitted!</p>
+          <p style="color:rgba(255,255,255,0.4);font-size:13px">Your event will show up in search results right away. Thanks for helping your community!</p>
+          <button id="submit-another" style="margin-top:20px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:10px 24px;border-radius:12px;cursor:pointer;font-size:14px">Add Another</button>
+        </div>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Event Name *</label>
+            <input id="sf-name" value="${state.submitForm.name}" placeholder="e.g. Franklin Car Show" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Event Type</label>
+            <select id="sf-type" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+              ${types.map(t=>`<option value="${t}" ${state.submitForm.type===t?"selected":""}>${t}</option>`).join("")}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div>
+              <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Date *</label>
+              <input id="sf-date" type="date" value="${state.submitForm.date}" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Time</label>
+              <input id="sf-time" type="time" value="${state.submitForm.time}" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+            </div>
+          </div>
+          <div>
+            <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Venue / Location Name</label>
+            <input id="sf-location" value="${state.submitForm.location}" placeholder="e.g. Franklin Civic Center" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div>
+            <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Street Address</label>
+            <input id="sf-address" value="${state.submitForm.address}" placeholder="123 Main St" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 80px;gap:10px">
+            <div>
+              <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">City *</label>
+              <input id="sf-city" value="${state.submitForm.city||state.info?.city||""}" placeholder="Franklin" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">State</label>
+              <input id="sf-state" value="${state.submitForm.state||state.info?.state||""}" placeholder="PA" maxlength="2" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box;text-transform:uppercase">
+            </div>
+          </div>
+          <div>
+            <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Cost</label>
+            <select id="sf-cost" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+              <option value="Free" ${state.submitForm.cost==="Free"?"selected":""}>Free</option>
+              <option value="Paid" ${state.submitForm.cost==="Paid"?"selected":""}>Paid</option>
+              <option value="See site" ${state.submitForm.cost==="See site"?"selected":""}>See website for details</option>
+            </select>
+          </div>
+          <div>
+            <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Description</label>
+            <textarea id="sf-desc" placeholder="Tell people what this event is about..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box;min-height:80px;resize:none">${state.submitForm.description}</textarea>
+          </div>
+          <div>
+            <label style="color:rgba(255,255,255,0.5);font-size:11px;text-transform:uppercase;letter-spacing:0.8px;display:block;margin-bottom:6px">Website / Ticket Link</label>
+            <input id="sf-url" value="${state.submitForm.url}" placeholder="https://..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:10px;color:#f1f5f9;padding:10px 12px;font-size:14px;box-sizing:border-box">
+          </div>
+          <button id="sf-submit" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;color:#fff;padding:14px;border-radius:12px;cursor:pointer;font-size:15px;font-weight:700;margin-top:4px">
+            ${state.submitLoading?"Submitting...":"Submit Event"}
+          </button>
+          <p style="color:rgba(255,255,255,0.2);font-size:11px;text-align:center">Events appear immediately in search results</p>
+        </div>
+      `}
+    </div>
+  </div>`;
+}
+
 function renderHome(){
   const sugg=state.suggestions;
   return`
@@ -2866,6 +2983,65 @@ function bindEvents(){
   if(back)back.addEventListener("click",()=>{
     state.userLat=null;state.userLng=null;
     setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list"});
+  });
+
+  // Submit event button
+  const submitBtn=document.getElementById("submit-btn");
+  if(submitBtn)submitBtn.addEventListener("click",()=>{
+    setState({submitScreen:true,submitSuccess:false});
+  });
+
+  // Close submit modal
+  const closeSubmit=document.getElementById("close-submit");
+  if(closeSubmit)closeSubmit.addEventListener("click",()=>setState({submitScreen:false}));
+
+  const overlay=document.getElementById("submit-overlay");
+  if(overlay)overlay.addEventListener("click",(e)=>{if(e.target===overlay)setState({submitScreen:false});});
+
+  // Submit another
+  const submitAnother=document.getElementById("submit-another");
+  if(submitAnother)submitAnother.addEventListener("click",()=>setState({submitSuccess:false,submitForm:{name:"",type:"Community",date:"",time:"",location:"",address:"",city:state.info?.city||"",state:state.info?.state||"",description:"",cost:"Free",url:""}}));
+
+  // Handle form submission
+  const sfSubmit=document.getElementById("sf-submit");
+  if(sfSubmit)sfSubmit.addEventListener("click",async()=>{
+    const name=document.getElementById("sf-name")?.value.trim();
+    const date=document.getElementById("sf-date")?.value;
+    const city=document.getElementById("sf-city")?.value.trim();
+    if(!name||!date||!city){showToast("Please fill in name, date and city");return;}
+    setState({submitLoading:true});
+    try{
+      const payload={
+        name,
+        event_type:document.getElementById("sf-type")?.value||"Community",
+        start_date:date,
+        start_time:document.getElementById("sf-time")?.value||null,
+        location:document.getElementById("sf-location")?.value||null,
+        address:document.getElementById("sf-address")?.value||null,
+        city,
+        state:document.getElementById("sf-state")?.value.toUpperCase()||null,
+        zip:state.zip||null,
+        description:document.getElementById("sf-desc")?.value||null,
+        url:document.getElementById("sf-url")?.value||null,
+        cost:document.getElementById("sf-cost")?.value||"Free",
+        approved:true,
+      };
+      const r=await fetch(`${SUPABASE_URL}/rest/v1/submitted_events`,{
+        method:"POST",
+        headers:{
+          "apikey":SUPABASE_KEY,
+          "Authorization":`Bearer ${SUPABASE_KEY}`,
+          "Content-Type":"application/json",
+          "Prefer":"return=minimal"
+        },
+        body:JSON.stringify(payload)
+      });
+      if(!r.ok)throw new Error("Failed");
+      setState({submitLoading:false,submitSuccess:true});
+    }catch(e){
+      setState({submitLoading:false});
+      showToast("Something went wrong. Please try again.");
+    }
   });
   document.querySelectorAll(".card-row").forEach(el=>el.addEventListener("click",()=>{
     const id=el.dataset.id;const newId=state.openId===id?null:id;
