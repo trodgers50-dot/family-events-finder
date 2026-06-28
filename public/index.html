@@ -2228,7 +2228,10 @@ const merged=[...submittedEvents,...filteredLive];
         return a.date.localeCompare(b.date);
       });
       const fromCache=data.fromCache===true;
-      setState({events:merged,loading:false,liveLoading:false,liveData:true,fromCache});
+      // Small delay so spinner doesn't flash off before events render
+      setTimeout(()=>{
+        setState({events:merged,loading:false,liveLoading:false,liveData:true,fromCache});
+      }, 400);
       loadAttendanceCounts(merged.map(e=>e.id));
       showToast(fromCache?`⚡ ${liveEvents.length} events loaded instantly`:`✓ ${liveEvents.length} live events loaded`);
     }else{
