@@ -26,7 +26,7 @@ async function getCached(cacheKey) {
 
 async function setCached(cacheKey, events) {
   try {
-    const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hour cache
     await fetch(`${SUPABASE_URL}/rest/v1/event_cache`, {
       method: "POST",
       headers: {
