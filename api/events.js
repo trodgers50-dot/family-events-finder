@@ -73,7 +73,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v5_${zip}${coordKey}`; // v5 = 2 page TM fetch // v2 = with working TM
+  const cacheKey = `events_v6_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -112,7 +112,8 @@ export default async function handler(req, res) {
   const stateName = stateMap[prefix2] || stateMap[prefix3] || "";
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
-          serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res] = await Promise.allSettled([
+          serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
+          serp9Res, serp10Res, serp11Res, serp12Res] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -125,6 +126,10 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchSerpAPI6(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI7(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI8(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI9(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI10(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI11(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpAPI12(cityName, zip, stateName, userLat, userLng), 3000),
   ]);
 
   if (tmRes.status === "fulfilled") { 
@@ -164,6 +169,18 @@ export default async function handler(req, res) {
 
   if (serp8Res.status === "fulfilled") results.events.push(...serp8Res.value);
   else results.errors.push("Google Events 8: " + serp8Res.reason?.message);
+
+  if (serp9Res.status === "fulfilled") results.events.push(...serp9Res.value);
+  else results.errors.push("Google Events 9: " + serp9Res.reason?.message);
+
+  if (serp10Res.status === "fulfilled") results.events.push(...serp10Res.value);
+  else results.errors.push("Google Events 10: " + serp10Res.reason?.message);
+
+  if (serp11Res.status === "fulfilled") results.events.push(...serp11Res.value);
+  else results.errors.push("Google Events 11: " + serp11Res.reason?.message);
+
+  if (serp12Res.status === "fulfilled") results.events.push(...serp12Res.value);
+  else results.errors.push("Google Events 12: " + serp12Res.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -652,6 +669,110 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
     address: ev.address?.join(", ") || cityName,
     description: ev.description || "",
     familyRating: 2,
+    cost: ev.ticket_info?.[0]?.price || "See site",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+// ── SerpAPI Query 9 — things to do this weekend ─────────────────────────────
+async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`things to do in ${location} this weekend`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=30` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp9_" + i + "_" + zip,
+    name: ev.title || "Local Event",
+    type: classifyByTitle(ev.title || ""),
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 5,
+    cost: ev.ticket_info?.[0]?.price || "Free",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+// ── SerpAPI Query 10 — outdoor and nature events ──────────────────────────────
+async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`outdoor nature hiking events near ${location}`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=30` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp10_" + i + "_" + zip,
+    name: ev.title || "Outdoor Event",
+    type: "Outdoor",
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 5,
+    cost: ev.ticket_info?.[0]?.price || "Free",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+// ── SerpAPI Query 11 — food and farmers market events ────────────────────────
+async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`food festival farmers market events near ${location}`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=30` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp11_" + i + "_" + zip,
+    name: ev.title || "Food Event",
+    type: classifyByTitle(ev.title || ""),
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 5,
+    cost: ev.ticket_info?.[0]?.price || "Free",
+    url: ev.link || "",
+    source: "Google Events",
+    subEvents: [],
+  }));
+}
+
+// ── SerpAPI Query 12 — arts music theater performances ───────────────────────
+async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const query = encodeURIComponent(`arts theater music performances near ${location}`);
+  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=30` : "";
+  const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+  const r = await fetch(url);
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    id: "serp12_" + i + "_" + zip,
+    name: ev.title || "Arts Event",
+    type: classifyByTitle(ev.title || ""),
+    startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+    endDate: parseDate(ev.date?.start_date || ""),
+    location: ev.venue?.name || ev.address?.[0] || cityName,
+    address: ev.address?.join(", ") || cityName,
+    description: ev.description || "",
+    familyRating: 4,
     cost: ev.ticket_info?.[0]?.price || "See site",
     url: ev.link || "",
     source: "Google Events",
