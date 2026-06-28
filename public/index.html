@@ -2109,11 +2109,21 @@ function m2(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
 
 async function getCityCoords(city, state, zip) {
   try {
-    const query = city && city !== "your area" ? `${city}${state?", "+state:""}` : zip;
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=0`;
-    const r = await fetch(url, {headers:{"User-Agent":"BuzzFinderApp/1.0"}});
-    const d = await r.json();
-    if(d&&d[0]) return {lat:parseFloat(d[0].lat), lng:parseFloat(d[0].lon)};
+    // Use ZIP code first for accuracy - avoids ambiguous city names like "Franklin PA"
+    // which has multiple matches in different parts of the state
+    const zipQuery = zip && zip.length === 5 ? zip : null;
+    const cityQuery = city && city !== "your area" ? `${city}${state?", "+state:""}` : null;
+    
+    // Try ZIP first, then fall back to city name
+    const queries = zipQuery ? [zipQuery, cityQuery] : [cityQuery];
+    
+    for(const q of queries) {
+      if(!q) continue;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=0&countrycodes=us`;
+      const r = await fetch(url, {headers:{"User-Agent":"BuzzFinderApp/1.0"}});
+      const d = await r.json();
+      if(d&&d[0]) return {lat:parseFloat(d[0].lat), lng:parseFloat(d[0].lon)};
+    }
   } catch(e){}
   return null;
 }
