@@ -2894,6 +2894,8 @@ function renderResults(){
         </div>
       </div>`:""}
     </div>`;
+    cardMap[ev.id]=cardHtml;
+    return cardHtml;
   }).join("");
 
   return`
@@ -2950,16 +2952,19 @@ function renderResults(){
         </div>
       </div>
       ${filtered.length===0?`<div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.2);font-size:14px">Nothing found for your filters</p><div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div></div>`:
-  GROUP_ORDER.filter(g=>groups[g]?.length>0).map(g=>`
-    <div style="margin-bottom:4px">
+  GROUP_ORDER.filter(g=>groups[g]?.length>0).map(g=>{
+    const color=g==="Today"?"#6ee7b7":g==="Tomorrow"?"#a5b4fc":g==="This Weekend"?"#f97316":"rgba(255,255,255,0.3)";
+    const icon=g==="Today"?"●":g==="Tomorrow"?"○":g==="This Weekend"?"◈":"◻";
+    const groupCards=groups[g].map(ev=>cardMap[ev.id]||"").join("");
+    return `<div style="margin-bottom:4px">
       <div style="display:flex;align-items:center;gap:10px;padding:16px 0 8px">
-        <div style="font-size:12px;font-weight:700;color:${g==="Today"?"#6ee7b7":g==="Tomorrow"?"#a5b4fc":g==="This Weekend"?"#f97316":"rgba(255,255,255,0.3)"};text-transform:uppercase;letter-spacing:1px;white-space:nowrap">${g==="Today"?"● Today":g==="Tomorrow"?"○ Tomorrow":g==="This Weekend"?"◈ This Weekend":g==="Next Week"?"◇ Next Week":g==="This Month"?"◻ This Month":"◻ Later"}</div>
+        <div style="font-size:12px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:1px;white-space:nowrap">${icon} ${g}</div>
         <div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div>
         <div style="font-size:11px;color:rgba(255,255,255,0.2)">${groups[g].length} event${groups[g].length!==1?"s":""}</div>
       </div>
-      ${groups[g].map(ev=>cards[filtered.indexOf(ev)]).join("")}
-    </div>
-  `).join("")
+      ${groupCards}
+    </div>`;
+  }).join("")
 }
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
         <div style="font-size:10px;color:rgba(255,255,255,0.15);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
