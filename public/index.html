@@ -2802,12 +2802,22 @@ function renderResults(){
   function getEvGroup(d){
     if(!d) return "Later";
     const today=new Date(); today.setHours(0,0,0,0);
-    const diff=Math.floor((new Date(d+"T00:00:00")-today)/86400000);
+    const evDate=new Date(d+"T00:00:00");
+    const diff=Math.floor((evDate-today)/86400000);
     if(diff<0) return "Later";
     if(diff===0) return "Today";
     if(diff===1) return "Tomorrow";
-    if(diff<=7) return "This Weekend";
-    if(diff<=14) return "Next Week";
+    // This Weekend = the coming Saturday and Sunday only
+    const dow=evDate.getDay(); // 0=Sun, 6=Sat
+    const todayDow=today.getDay();
+    const daysUntilSat=todayDow<=6?(6-todayDow):0;
+    const daysUntilSun=todayDow===0?0:(7-todayDow);
+    const isThisWeekend=(diff>1)&&(diff<=daysUntilSun+1)&&(dow===0||dow===6);
+    if(isThisWeekend) return "This Weekend";
+    // Next Week = Mon-Sun of next calendar week
+    const daysUntilNextMon=todayDow===0?1:(8-todayDow);
+    const daysUntilNextSun=daysUntilNextMon+6;
+    if(diff>=daysUntilNextMon&&diff<=daysUntilNextSun) return "Next Week";
     if(diff<=31) return "This Month";
     return "Later";
   }
