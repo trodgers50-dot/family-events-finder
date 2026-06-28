@@ -3373,7 +3373,7 @@ function bindEvents(){
   }));
 }
 
-render();
+restoreSession().then(()=>{ render(); });
 </script>
 </body>
 </html>
