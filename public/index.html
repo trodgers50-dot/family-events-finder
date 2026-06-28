@@ -2173,8 +2173,6 @@ async function doSearch(input,regionOverride){
 
   setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
   
-  // Fetch attendance counts for fallback events
-  loadAttendanceCounts(fallback.map(e=>e.id));
   
   // Phase 2 - live events
   try{
@@ -2211,8 +2209,6 @@ async function doSearch(input,regionOverride){
           })
         : liveEvents;
 
-      const liveNames=new Set(filteredLive.map(e=>e.name.toLowerCase().slice(0,15)));
-      const uniqueFallback=fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
       console.log("filteredLive:", filteredLive.length, "submitted:", submittedEvents.length);
       const merged=[...submittedEvents,...filteredLive,...uniqueFallback];
       merged.sort((a,b)=>{
