@@ -2187,8 +2187,7 @@ async function doSearch(input,regionOverride){
     clearTimeout(timeout);
     if(!res.ok)throw new Error("API error");
     const data=await res.json();
-    console.log("API response - events:", data.events?.length, "errors:", data.errors, "fromCache:", data.fromCache);
-    if(data.events&&data.events.length>0){
+if(data.events&&data.events.length>0){
       const liveEvents=data.events.map(ev=>({
         ...ev,emoji:m2(ev.type).icon,photo:ev.image||getPhoto(ev.type,ev.id),
         weather:getWeather(ev.startDate,getRegionInfo(zip).region),
@@ -2209,8 +2208,7 @@ async function doSearch(input,regionOverride){
           })
         : liveEvents;
 
-      console.log("filteredLive:", filteredLive.length, "submitted:", submittedEvents.length);
-      const merged=[...submittedEvents,...filteredLive];
+const merged=[...submittedEvents,...filteredLive];
       merged.sort((a,b)=>{
         const distA=(state.userLat&&state.userLng&&a.lat&&a.lng)
           ?haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
@@ -2707,8 +2705,7 @@ function renderHome(){
 function renderResults(){
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
   // Temporarily show ALL events to debug why nothing shows
-  console.log("renderResults - state.events:", state.events.length, "liveLoading:", state.liveLoading);
-  const filtered=state.events.filter(ev=>{
+const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
     return true;
@@ -3112,6 +3109,26 @@ function showSubmitModal(){
         body:JSON.stringify(payload)
       });
       if(!r.ok)throw new Error("Failed: "+r.status);
+      
+      // Add event to state immediately so it shows without re-searching
+      const newEvent = {
+        id: "sub_"+Date.now(),
+        name: payload.name,
+        type: payload.event_type||"Community",
+        startDate: payload.start_date,
+        date: payload.start_date,
+        location: payload.location||city,
+        address: payload.address ? `${payload.address}, ${city}, ${payload.state||""}` : `${city}, ${payload.state||""}`,
+        description: payload.description||"",
+        cost: payload.cost||"Free",
+        url: payload.url||"",
+        source: "Submitted",
+        who: ["all"],
+        familyRating: 5,
+        emoji: "📌",
+      };
+      setState({events:[newEvent,...state.events]});
+
       overlay.querySelector("div").innerHTML=`
         <div style="text-align:center;padding:60px 20px">
           <div style="font-size:56px;margin-bottom:16px">🎉</div>
