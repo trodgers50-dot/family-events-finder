@@ -2798,13 +2798,34 @@ function renderResults(){
     groups[g].push(ev);
   });
 
+  // Date group helper
+  function getEvGroup(d){
+    if(!d) return "Later";
+    const today=new Date(); today.setHours(0,0,0,0);
+    const diff=Math.floor((new Date(d+"T00:00:00")-today)/86400000);
+    if(diff<0) return "Later";
+    if(diff===0) return "Today";
+    if(diff===1) return "Tomorrow";
+    if(diff<=7) return "This Weekend";
+    if(diff<=14) return "Next Week";
+    if(diff<=31) return "This Month";
+    return "Later";
+  }
+  const GROUP_COLORS={"Today":"#6ee7b7","Tomorrow":"#a5b4fc","This Weekend":"#f97316","Next Week":"rgba(255,255,255,0.4)","This Month":"rgba(255,255,255,0.3)","Later":"rgba(255,255,255,0.2)"};
+  let lastGroup="";
+
   const cards=filtered.map((ev,idx)=>{
     const meta=m2(ev.type);
     const isOpen=state.openId===ev.id;
     const isFav=state.favs.has(ev.id);
     const isGoing=state.going.has(ev.id);
     const count=state.attendanceCounts[ev.id]||0;
-    const cardHtml=`
+    const evGroup=getEvGroup(ev.date||ev.startDate);
+    const groupCount=filtered.filter(e=>getEvGroup(e.date||e.startDate)===evGroup).length;
+    const showHeader=evGroup!==lastGroup;
+    if(showHeader) lastGroup=evGroup;
+    const header=showHeader?`<div style="display:flex;align-items:center;gap:8px;padding:${idx===0?"8px":"18px"} 0 8px"><span style="font-size:11px;font-weight:700;color:${GROUP_COLORS[evGroup]||"rgba(255,255,255,0.3)"};text-transform:uppercase;letter-spacing:1.2px">${evGroup}</span><div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div><span style="font-size:10px;color:rgba(255,255,255,0.2)">${groupCount}</span></div>`:"";
+    return header+`
     <div style="border-radius:16px;overflow:hidden;background:${isOpen?"rgba(255,255,255,0.03)":"transparent"};border:1px solid ${isOpen?"rgba(255,255,255,0.07)":"transparent"};margin-bottom:${isOpen?"8px":"0"};transition:all 0.2s">
       ${isOpen?`<div style="position:relative;height:160px;overflow:hidden"><img src="${ev.photo}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.65"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.9) 0%,transparent 55%)"></div><div style="position:absolute;top:10px;left:12px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,0.5);color:${meta.color};font-size:11px;font-weight:700">${san(ev.type)}</div>${ev.isWeekend?`<div style="position:absolute;top:10px;right:12px;padding:4px 10px;border-radius:999px;background:rgba(99,102,241,0.7);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
       <div class="card-row" data-id="${ev.id}" style="display:flex;align-items:center;gap:12px;padding:14px 2px;cursor:pointer;border-bottom:${idx<filtered.length-1&&!isOpen?"1px solid rgba(255,255,255,0.04)":"none"}">
@@ -2894,9 +2915,7 @@ function renderResults(){
         </div>
       </div>`:""}
     </div>`;
-    cardMap[ev.id]=cardHtml;
-    return cardHtml;
-  });
+  }).join("");
 
   return`
   ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap;font-size:14px">${state.toast}</div>`:""}
@@ -2951,43 +2970,7 @@ function renderResults(){
           </div>
         </div>
       </div>
-      ${(()=>{
-  if(filtered.length===0) return `<div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.2);font-size:14px">Nothing found for your filters</p><div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div></div>`;
-  
-  // Group by date
-  function getGroup(d){
-    if(!d) return "Later";
-    const today=new Date(); today.setHours(0,0,0,0);
-    const ev=new Date(d+"T00:00:00");
-    const diff=Math.floor((ev-today)/86400000);
-    if(diff<0) return "Later";
-    if(diff===0) return "Today";
-    if(diff===1) return "Tomorrow";
-    if(diff<=7) return "This Weekend";
-    if(diff<=14) return "Next Week";
-    if(diff<=31) return "This Month";
-    return "Later";
-  }
-  const ORDER=["Today","Tomorrow","This Weekend","Next Week","This Month","Later"];
-  const grps={};
-  filtered.forEach(ev=>{
-    const g=getGroup(ev.date||ev.startDate);
-    if(!grps[g]) grps[g]=[];
-    grps[g].push(ev);
-  });
-  const COLORS={"Today":"#6ee7b7","Tomorrow":"#a5b4fc","This Weekend":"#f97316"};
-  return ORDER.filter(g=>grps[g]?.length).map(g=>{
-    const color=COLORS[g]||"rgba(255,255,255,0.3)";
-    return `<div>
-      <div style="display:flex;align-items:center;gap:8px;padding:14px 0 8px">
-        <span style="font-size:11px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:1px">${g}</span>
-        <div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div>
-        <span style="font-size:11px;color:rgba(255,255,255,0.2)">${grps[g].length}</span>
-      </div>
-      ${grps[g].map(ev=>cardMap[ev.id]||"").join("")}
-    </div>`;
-  }).join("");
-})()}
+      ${filtered.length===0?`<div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.2);font-size:14px">Nothing found for your filters</p><div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.35);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div></div>`:cards}
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
         <div style="font-size:10px;color:rgba(255,255,255,0.15);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
