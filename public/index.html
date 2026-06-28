@@ -2171,8 +2171,7 @@ async function doSearch(input,regionOverride){
     setState({coordsLoading:false});
   }
 
-  const fallback=generateFallback(zip,info);
-  setState({loading:false,liveLoading:true,screen:"results",events:fallback,openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:false,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
+  setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
   
   // Fetch attendance counts for fallback events
   loadAttendanceCounts(fallback.map(e=>e.id));
@@ -2181,14 +2180,16 @@ async function doSearch(input,regionOverride){
   try{
     const coordParams=state.userLat&&state.userLng?`&lat=${state.userLat}&lng=${state.userLng}`:"";
     const controller = new AbortController();
-    const timeout = setTimeout(()=>controller.abort(), 12000);
-    const [res, submittedEvents] = await Promise.all([
+    const timeout = setTimeout(()=>controller.abort(), 20000);
+    const [res, submittedEventsResult] = await Promise.all([
       fetch(`${PROXY_URL}?zip=${zip}${coordParams}`, {signal:controller.signal}),
-      fetchSubmittedEvents(info?.city, zip)
+      fetchSubmittedEvents(info?.city, zip).catch(()=>[])
     ]);
+    const submittedEvents = submittedEventsResult || [];
     clearTimeout(timeout);
     if(!res.ok)throw new Error("API error");
     const data=await res.json();
+    console.log("API response - events:", data.events?.length, "errors:", data.errors, "fromCache:", data.fromCache);
     if(data.events&&data.events.length>0){
       const liveEvents=data.events.map(ev=>({
         ...ev,emoji:m2(ev.type).icon,photo:ev.image||getPhoto(ev.type,ev.id),
@@ -2212,7 +2213,7 @@ async function doSearch(input,regionOverride){
 
       const liveNames=new Set(filteredLive.map(e=>e.name.toLowerCase().slice(0,15)));
       const uniqueFallback=fallback.filter(e=>!liveNames.has(e.name.toLowerCase().slice(0,15)));
-      // Add submitted events first so they always show for local searches
+      console.log("filteredLive:", filteredLive.length, "submitted:", submittedEvents.length);
       const merged=[...submittedEvents,...filteredLive,...uniqueFallback];
       merged.sort((a,b)=>{
         const distA=(state.userLat&&state.userLng&&a.lat&&a.lng)
@@ -2233,15 +2234,16 @@ async function doSearch(input,regionOverride){
         return a.date.localeCompare(b.date);
       });
       const fromCache=data.fromCache===true;
-      setState({events:merged,liveLoading:false,liveData:true,fromCache});
+      setState({events:merged,loading:false,liveLoading:false,liveData:true,fromCache});
       loadAttendanceCounts(merged.map(e=>e.id));
       showToast(fromCache?`⚡ ${liveEvents.length} events loaded instantly`:`✓ ${liveEvents.length} live events loaded`);
     }else{
-      setState({liveLoading:false,liveData:false});
+      setState({events:submittedEvents||[],loading:false,liveLoading:false,liveData:false});
     }
   }catch(e){
-    console.log("Live fetch failed:",e.message);
-    setState({liveLoading:false,liveData:false});
+    console.log("Live fetch failed:",e.message,e);
+    showToast("Could not load events: "+e.message);
+    setState({loading:false,liveLoading:false,liveData:false});
   }
 }
 
@@ -2708,28 +2710,10 @@ function renderHome(){
 
 function renderResults(){
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
+  // Temporarily show ALL events to debug why nothing shows
   const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
-    if(state.whoFilter!=="all"&&ev.who&&!ev.who.includes(state.whoFilter)&&!ev.who.includes("all"))return false;
-    if(!withinDays(ev.date,maxDays))return false;
-    // Filter by distance when we have user coords
-    if(state.userLat&&state.userLng){
-      if(ev.lat&&ev.lng){
-        // Has coords - filter by actual distance
-        const d=haversine(state.userLat,state.userLng,parseFloat(ev.lat),parseFloat(ev.lng));
-        if(d>75)return false;
-      } else {
-        // No coords - strict city matching
-        const addr=(ev.address||ev.location||"").toLowerCase();
-        const city=(state.info?.city||"").toLowerCase();
-        const hasCity = city.length>3 && addr.includes(city);
-        const hasZip = state.zip && addr.includes(state.zip);
-        const isLocal = ev.source==="Local"; // keep generated fallback events
-        // Reject anything with an address that doesn't match our city
-        if(!isLocal && addr.length>8 && !hasCity && !hasZip) return false;
-      }
-    }
     return true;
   }).sort((a,b)=>{
     // Calculate real-time distances
