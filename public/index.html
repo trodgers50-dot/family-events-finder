@@ -85,6 +85,7 @@ async function signOut() {
     headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${state.session?.access_token}` }
   });
   setState({ session: null, user: null });
+  try{ localStorage.removeItem("buzz_session"); localStorage.removeItem("buzz_user"); }catch(e){}
   showToast("Signed out");
 }
 
@@ -2368,6 +2369,53 @@ async function initMap(events, center){
 }
 
 
+async function restoreSession(){
+  try{
+    const savedSession = localStorage.getItem("buzz_session");
+    const savedUser = localStorage.getItem("buzz_user");
+    if(savedSession && savedUser){
+      const session = JSON.parse(savedSession);
+      const user = JSON.parse(savedUser);
+      // Verify session is still valid by checking expiry
+      if(session.expires_at){
+        const expiresAt = new Date(session.expires_at * 1000);
+        if(expiresAt > new Date()){
+          state.session = session;
+          state.user = user;
+          const going = await getUserGoing(user.id);
+          state.going = going;
+          render();
+          return;
+        }
+      }
+      // Session expired - try to refresh
+      if(session.refresh_token){
+        try{
+          const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{
+            method:"POST",
+            headers:{"apikey":SUPABASE_KEY,"Content-Type":"application/json"},
+            body:JSON.stringify({refresh_token:session.refresh_token})
+          });
+          const data = await r.json();
+          if(data.access_token){
+            state.session = data;
+            state.user = data.user||user;
+            localStorage.setItem("buzz_session", JSON.stringify(state.session));
+            localStorage.setItem("buzz_user", JSON.stringify(state.user));
+            const going = await getUserGoing(state.user.id);
+            state.going = going;
+            render();
+            return;
+          }
+        }catch(e){}
+      }
+      // Clear invalid session
+      localStorage.removeItem("buzz_session");
+      localStorage.removeItem("buzz_user");
+    }
+  }catch(e){}
+}
+
 function render(){
   document.getElementById("root").innerHTML=state.screen==="home"?renderHome():renderResults();
   bindEvents();
@@ -2406,6 +2454,10 @@ function getModalHTML(){
           style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%;box-sizing:border-box"/>
         <input id="auth-password" type="password" value="${state.authPassword}" placeholder="Password (min 6 chars)"
           style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:15px;color:#fff;outline:none;width:100%;box-sizing:border-box"/>
+        <div style="display:flex;align-items:center;gap:10px;padding:4px 2px">
+          <input type="checkbox" id="keep-signed-in" checked style="width:16px;height:16px;accent-color:#6366f1;cursor:pointer">
+          <label for="keep-signed-in" style="color:rgba(255,255,255,0.5);font-size:13px;cursor:pointer">Keep me signed in</label>
+        </div>
         <button id="auth-submit" style="background:#6366f1;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;width:100%;opacity:${state.authLoading?0.7:1}">
           ${state.authLoading?"Loading...":(state.authMode==="signup"?"Create Account":"Sign In")}
         </button>
@@ -2535,6 +2587,12 @@ async function handleModalAuth(overlay){
       state.authEmail = "";
       state.authPassword = "";
       state.going = going;
+      // Save session to localStorage if "Keep me signed in" is checked
+      const keepSignedIn = document.getElementById("keep-signed-in")?.checked !== false;
+      if(keepSignedIn){
+        try{ localStorage.setItem("buzz_session", JSON.stringify(state.session)); }catch(e){}
+        try{ localStorage.setItem("buzz_user", JSON.stringify(state.user)); }catch(e){}
+      }
       overlay.remove();
       showToast(state.authMode==="signup"?"✓ Account created! Welcome to Buzz":"✓ Welcome back!");
       render();
