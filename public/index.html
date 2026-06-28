@@ -2210,7 +2210,7 @@ async function doSearch(input,regionOverride){
         : liveEvents;
 
       console.log("filteredLive:", filteredLive.length, "submitted:", submittedEvents.length);
-      const merged=[...submittedEvents,...filteredLive,...uniqueFallback];
+      const merged=[...submittedEvents,...filteredLive];
       merged.sort((a,b)=>{
         const distA=(state.userLat&&state.userLng&&a.lat&&a.lng)
           ?haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
@@ -2707,6 +2707,7 @@ function renderHome(){
 function renderResults(){
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
   // Temporarily show ALL events to debug why nothing shows
+  console.log("renderResults - state.events:", state.events.length, "liveLoading:", state.liveLoading);
   const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
