@@ -4262,6 +4262,11 @@ function bindSubmitEvents(){
 }
 
 function bindEvents(){
+  // Legal screen links
+  document.querySelectorAll(".legal-link").forEach(el=>el.addEventListener("click",()=>{
+    setState({legalScreen:el.dataset.screen});
+  }));
+
   const gps=document.getElementById("gps-btn");
   if(gps)gps.addEventListener("click",detectLocation);
   const signinBtn=document.getElementById("signin-btn");
@@ -4309,6 +4314,11 @@ function bindEvents(){
       },150);
     }
   });
+  // Legal links
+  document.querySelectorAll(".legal-link").forEach(el=>el.addEventListener("click",()=>{
+    setState({legalScreen:el.dataset.screen});
+  }));
+
   const back=document.getElementById("back-btn");
   if(back)back.addEventListener("click",()=>{
     state.userLat=null;state.userLng=null;
