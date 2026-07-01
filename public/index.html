@@ -3360,7 +3360,7 @@ async function restoreSession(){
 }
 
 function render(){
-  document.getElementById("root").innerHTML=state.screen==="home"?renderHome():renderResults();
+  document.getElementById("root").innerHTML=state.legalScreen?renderLegal():state.screen==="home"?renderHome():renderResults();
   bindEvents();
   // Only create modal if it doesn't exist yet
   const existingModal = document.getElementById("auth-modal-overlay");
@@ -3638,6 +3638,45 @@ function renderSubmitModal(){
           <p style="color:rgba(255,255,255,0.2);font-size:11px;text-align:center">Events appear immediately in search results</p>
         </div>
       `}
+    </div>
+  </div>`;
+}
+
+function renderLegal(){
+  const isPrivacy = state.legalScreen === "privacy";
+  return `<div style="min-height:100vh;background:#0a0a0f;padding:0 0 60px">
+    <div style="max-width:700px;margin:0 auto;padding:16px">
+      <button onclick="setState({legalScreen:null})" style="background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.6);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;margin-bottom:24px">← Back</button>
+      <h1 style="color:#f1f5f9;font-size:22px;font-weight:700;margin-bottom:4px">${isPrivacy?"Privacy Policy":"Terms of Use"}</h1>
+      <p style="color:rgba(255,255,255,0.3);font-size:12px;margin-bottom:28px">Last updated: June 30, 2026</p>
+      <div style="color:rgba(255,255,255,0.6);font-size:14px;line-height:1.8">
+      ${isPrivacy ? `
+        <p>Buzz operates buzzfinder.app and the Buzz mobile app. This Privacy Policy explains how we collect, use, and protect your information.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Information We Collect</h3>
+        <p><strong style="color:#f1f5f9">Account:</strong> Email address and password when you create an account.</p>
+        <p><strong style="color:#f1f5f9">Location:</strong> With your permission, GPS location to show nearby events. We do not store your location.</p>
+        <p><strong style="color:#f1f5f9">Usage:</strong> Anonymous analytics via Vercel Analytics. No personally identifiable information.</p>
+        <p><strong style="color:#f1f5f9">Content:</strong> Reviews, ratings, attendance, and events you submit may be visible to other users.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Third Party Services</h3>
+        <p>Buzz uses Ticketmaster, SerpAPI, PredictHQ, RapidAPI, and OpenStreetMap to provide event data. Each has their own privacy policy.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Data Deletion</h3>
+        <p>Request deletion of your account at any time by emailing privacy@buzzfinder.app.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Contact</h3>
+        <p>privacy@buzzfinder.app</p>
+      ` : `
+        <p>By using Buzz you agree to these Terms of Use.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Use of Service</h3>
+        <p>Buzz is a free local event discovery service. You may not use Buzz for unlawful purposes or in ways that harm other users.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">User Content</h3>
+        <p>You are responsible for accuracy of events you submit. We reserve the right to remove content that violates these terms.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Event Accuracy</h3>
+        <p>Buzz aggregates data from third party sources. We do not guarantee accuracy of event information. Always verify with the organizer before attending.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Disclaimer</h3>
+        <p>Buzz is provided "as is" without warranty. We are not liable for damages arising from use of the service.</p>
+        <h3 style="color:#f1f5f9;margin-top:24px">Contact</h3>
+        <p>legal@buzzfinder.app</p>
+      `}
+      </div>
     </div>
   </div>`;
 }
@@ -3975,8 +4014,8 @@ const filtered=state.events.filter(ev=>{
           <a href="https://www.openstreetmap.org/copyright" target="_blank" style="color:rgba(255,255,255,0.2);text-decoration:none">© OpenStreetMap contributors</a>
         </div>
         <div style="text-align:center;margin-top:8px;font-size:10px;color:rgba(255,255,255,0.1);display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-          <a href="https://buzzfinder.app/privacy" target="_blank" style="color:rgba(255,255,255,0.2);text-decoration:none">Privacy Policy</a>
-          <a href="https://buzzfinder.app/terms" target="_blank" style="color:rgba(255,255,255,0.2);text-decoration:none">Terms of Use</a>
+          <span onclick="setState({legalScreen:'privacy'})" style="color:rgba(255,255,255,0.2);text-decoration:none;cursor:pointer">Privacy Policy</span>
+          <span onclick="setState({legalScreen:'terms'})" style="color:rgba(255,255,255,0.2);text-decoration:none;cursor:pointer">Terms of Use</span>
           <span style="color:rgba(255,255,255,0.1)">© 2026 Buzz · buzzfinder.app</span>
         </div>
       </div>
