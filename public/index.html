@@ -3043,9 +3043,12 @@ let state={
   authModal:null,authError:"",authLoading:false,
   authEmail:"",authPassword:"",authMode:"signin",
   viewMode:"list",mapInstance:null,
+  legalScreen:null,
 };
 
 function setState(u){Object.assign(state,u);render();}
+window.showLegal=function(screen){setState({legalScreen:screen});};
+window.hideLegal=function(){setState({legalScreen:null});};
 function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}),2500);}
 function m2(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
 
@@ -3646,7 +3649,7 @@ function renderLegal(){
   const isPrivacy = state.legalScreen === "privacy";
   return `<div style="min-height:100vh;background:#0a0a0f;padding:0 0 60px">
     <div style="max-width:700px;margin:0 auto;padding:16px">
-      <button onclick="setState({legalScreen:null})" style="background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.6);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;margin-bottom:24px">← Back</button>
+      <button onclick="window.hideLegal()" style="background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.6);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13px;margin-bottom:24px">← Back</button>
       <h1 style="color:#f1f5f9;font-size:22px;font-weight:700;margin-bottom:4px">${isPrivacy?"Privacy Policy":"Terms of Use"}</h1>
       <p style="color:rgba(255,255,255,0.3);font-size:12px;margin-bottom:28px">Last updated: June 30, 2026</p>
       <div style="color:rgba(255,255,255,0.6);font-size:14px;line-height:1.8">
@@ -4266,6 +4269,8 @@ function bindEvents(){
   document.querySelectorAll(".legal-link").forEach(el=>el.addEventListener("click",()=>{
     setState({legalScreen:el.dataset.screen});
   }));
+  const legalBack=document.getElementById("legal-back");
+  if(legalBack)legalBack.addEventListener("click",()=>setState({legalScreen:null}));
 
   const gps=document.getElementById("gps-btn");
   if(gps)gps.addEventListener("click",detectLocation);
