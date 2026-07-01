@@ -3144,6 +3144,8 @@ if(data.events&&data.events.length>0){
       }));
       // Filter out events too far away when we have coords
       const MAX_DIST = 75;
+      const searchState=(state.info?.state||"").toUpperCase();
+      const searchCity=(state.info?.city||"").toLowerCase();
       const filteredLive = (state.userLat&&state.userLng)
         ? liveEvents.filter(ev=>{
             if(!ev.distanceMiles&&ev.lat&&ev.lng){
@@ -3151,7 +3153,16 @@ if(data.events&&data.events.length>0){
               return d<=MAX_DIST;
             }
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-            return true; // keep events without any location data
+            // No coords - check address doesn't belong to a different state
+            if(searchState && searchState.length===2){
+              const addr=(ev.address||ev.location||"").toUpperCase();
+              if(addr.length>5){
+                // If address ends with a 2-letter state that doesn't match, reject
+                const stateMatch=addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+                if(stateMatch && stateMatch[1] !== searchState) return false;
+              }
+            }
+            return true;
           })
         : liveEvents;
 
