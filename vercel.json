@@ -6,9 +6,9 @@
     }
   },
   "rewrites": [
-    { "source": "/privacy", "destination": "/privacy.html" },
-    { "source": "/privacy.html", "destination": "/public/privacy.html" },
-    { "source": "/terms", "destination": "/terms.html" },
-    { "source": "/terms.html", "destination": "/public/terms.html" }
+    { "source": "/privacy", "destination": "/index.html" },
+    { "source": "/privacy.html", "destination": "/index.html" },
+    { "source": "/terms", "destination": "/index.html" },
+    { "source": "/terms.html", "destination": "/index.html" }
   ]
 }
