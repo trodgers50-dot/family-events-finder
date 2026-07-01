@@ -350,7 +350,7 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -364,7 +364,19 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── RapidAPI ──────────────────────────────────────────────────────────────────
@@ -490,7 +502,7 @@ async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp2_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -504,7 +516,19 @@ async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 function classifyPHQ(category, title) {
@@ -534,7 +558,7 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp3_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -548,7 +572,19 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 4 — concerts and live music focus ───────────────────────────
@@ -562,7 +598,7 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp4_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: "Music",
@@ -576,7 +612,19 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 5 — festivals and outdoor events ────────────────────────────
@@ -590,7 +638,7 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp5_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -604,7 +652,19 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 
@@ -619,7 +679,7 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp6_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -633,7 +693,19 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 7 — kids and family events ──────────────────────────────────
@@ -647,7 +719,7 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp7_" + i + "_" + zip,
     name: ev.title || "Family Event",
     type: classifyByTitle(ev.title || ""),
@@ -661,7 +733,19 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 8 — nightlife and bars ─────────────────────────────────────
@@ -675,7 +759,7 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp8_" + i + "_" + zip,
     name: ev.title || "Nightlife Event",
     type: "Nightlife",
@@ -689,7 +773,19 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 9 — things to do this weekend ─────────────────────────────
@@ -703,7 +799,7 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp9_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -717,7 +813,19 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 10 — outdoor and nature events ──────────────────────────────
@@ -731,7 +839,7 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp10_" + i + "_" + zip,
     name: ev.title || "Outdoor Event",
     type: "Outdoor",
@@ -745,7 +853,19 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 11 — food and farmers market events ────────────────────────
@@ -759,7 +879,7 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp11_" + i + "_" + zip,
     name: ev.title || "Food Event",
     type: classifyByTitle(ev.title || ""),
@@ -773,7 +893,19 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 // ── SerpAPI Query 12 — arts music theater performances ───────────────────────
@@ -787,7 +919,7 @@ async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
     id: "serp12_" + i + "_" + zip,
     name: ev.title || "Arts Event",
     type: classifyByTitle(ev.title || ""),
@@ -801,7 +933,19 @@ async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
     url: ev.link || "",
     source: "Google Events",
     subEvents: [],
+    lat: ev.gps_coordinates?.latitude || null,
+    lng: ev.gps_coordinates?.longitude || null,
   }));
+  if(lat && lng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  }
+  return results;
 }
 
 function calcDistance(lat1, lon1, lat2, lon2) {
