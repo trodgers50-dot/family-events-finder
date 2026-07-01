@@ -1,3 +1,12 @@
 {
-  "version": 2
+  "version": 2,
+  "functions": {
+    "api/events.js": {
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    { "src": "/privacy", "dest": "/privacy.html" },
+    { "src": "/terms", "dest": "/terms.html" }
+  ]
 }
