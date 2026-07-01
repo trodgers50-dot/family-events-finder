@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms of Use - Buzz</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 800px; margin: 0 auto; padding: 24px 16px; background: #0a0a0f; color: #cbd5e1; line-height: 1.7; }
+  h1 { color: #f1f5f9; font-size: 28px; margin-bottom: 8px; }
+  h2 { color: #f1f5f9; font-size: 18px; margin-top: 32px; }
+  a { color: #6366f1; }
+  .updated { color: rgba(255,255,255,0.3); font-size: 13px; margin-bottom: 32px; }
+  .back { display: inline-block; margin-bottom: 24px; color: #6366f1; text-decoration: none; font-size: 14px; }
+</style>
+</head>
+<body>
+<a href="https://buzzfinder.app" class="back">← Back to Buzz</a>
+<h1>Terms of Use</h1>
+<p class="updated">Last updated: June 30, 2026</p>
+
+<p>By using Buzz ("the app") at buzzfinder.app or on mobile devices, you agree to these Terms of Use. Please read them carefully.</p>
+
+<h2>Use of the Service</h2>
+<p>Buzz is a free local event discovery service. You may use Buzz to discover local events, create an account, leave reviews, and submit events for your community. You agree not to use Buzz for any unlawful purpose or in a way that could harm other users.</p>
+
+<h2>User Accounts</h2>
+<p>You are responsible for maintaining the security of your account. You agree to provide accurate information when creating an account. We reserve the right to terminate accounts that violate these terms.</p>
+
+<h2>User Submitted Content</h2>
+<p>When you submit events, reviews, or other content to Buzz, you grant us a license to display that content within the app. You are responsible for ensuring that submitted events are accurate and not misleading. We reserve the right to remove any content that violates these terms.</p>
+
+<h2>Event Information Accuracy</h2>
+<p>Buzz aggregates event data from multiple third party sources. We do not guarantee the accuracy, completeness, or timeliness of event information. Always verify event details with the organizer before attending.</p>
+
+<h2>Intellectual Property</h2>
+<p>The Buzz name, logo, and app design are owned by Buzz. Event data displayed in the app is sourced from third party providers and remains their property. Ticketmaster data is provided under their API terms of service.</p>
+
+<h2>Disclaimer of Warranties</h2>
+<p>Buzz is provided "as is" without warranty of any kind. We do not warrant that the service will be uninterrupted, error-free, or that event information will be accurate.</p>
+
+<h2>Limitation of Liability</h2>
+<p>Buzz shall not be liable for any indirect, incidental, or consequential damages arising from your use of the service or reliance on event information displayed in the app.</p>
+
+<h2>Changes to Terms</h2>
+<p>We reserve the right to modify these terms at any time. Continued use of the app after changes constitutes acceptance of the new terms.</p>
+
+<h2>Contact</h2>
+<p>Questions about these Terms? Contact us at: <a href="mailto:legal@buzzfinder.app">legal@buzzfinder.app</a></p>
+</body>
+</html>
