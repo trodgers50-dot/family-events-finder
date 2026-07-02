@@ -5,6 +5,7 @@ const TM_KEY       = process.env.TM_KEY    || "";
 const SERP_KEY     = process.env.SERP_KEY  || "";
 const RAPID_KEY    = process.env.RAPID_KEY || "";
 const PHQ_KEY      = process.env.PHQ_KEY   || "";
+const EB_KEY       = process.env.EB_KEY    || "";
 const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_U5KBIkFT7l0jSSD8QaYJPQ_dEZWQJ63";
 
@@ -78,7 +79,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v6_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
+  const cacheKey = `events_v7_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -118,7 +119,7 @@ export default async function handler(req, res) {
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
-          serp9Res, serp10Res, serp11Res, serp12Res] = await Promise.allSettled([
+          serp9Res, serp10Res, serp11Res, serp12Res, ebRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -135,6 +136,7 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchSerpAPI10(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI11(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI12(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchEventbrite(cityName, zip, stateName, userLat, userLng), 5000),
   ]);
 
   if (tmRes.status === "fulfilled") { 
@@ -186,6 +188,9 @@ export default async function handler(req, res) {
 
   if (serp12Res.status === "fulfilled") results.events.push(...serp12Res.value);
   else results.errors.push("Google Events 12: " + serp12Res.reason?.message);
+
+  if (ebRes.status === "fulfilled") results.events.push(...ebRes.value);
+  else results.errors.push("Eventbrite: " + ebRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -345,6 +350,64 @@ async function fetchTicketmaster(zip, userLat, userLng) {
 }
 
 // ── SerpAPI ───────────────────────────────────────────────────────────────────
+async function fetchEventbrite(cityName, zip, stateName, lat, lng) {
+  if(!EB_KEY) return [];
+  try {
+    const location = stateName && cityName !== "your area" 
+      ? `${cityName}, ${stateName}` 
+      : cityName;
+    
+    // Build location query - use lat/lng if available, otherwise city name
+    let locationParam = "";
+    if(lat && lng) {
+      locationParam = `&location.latitude=${lat}&location.longitude=${lng}&location.within=40mi`;
+    } else {
+      locationParam = `&location.address=${encodeURIComponent(location)}`;
+    }
+
+    const today = new Date().toISOString();
+    const threeMonths = new Date(Date.now() + 90*24*60*60*1000).toISOString();
+
+    const url = `https://www.eventbriteapi.com/v3/events/search/?token=${EB_KEY}${locationParam}&start_date.range_start=${today}&start_date.range_end=${threeMonths}&expand=venue&page_size=50`;
+    
+    const r = await fetch(url);
+    if(!r.ok) return [];
+    const d = await r.json();
+    
+    const events = (d.events || []);
+    return events.map((ev, i) => ({
+      id: "eb_" + ev.id,
+      name: ev.name?.text || "Local Event",
+      type: classifyByTitle(ev.name?.text || ""),
+      startDate: ev.start?.local ? ev.start.local.split("T")[0] : "",
+      endDate: ev.end?.local ? ev.end.local.split("T")[0] : "",
+      location: ev.venue?.name || cityName,
+      address: ev.venue ? [
+        ev.venue.address?.address_1,
+        ev.venue.address?.city,
+        ev.venue.address?.region
+      ].filter(Boolean).join(", ") : cityName,
+      description: ev.description?.text?.slice(0, 200) || "",
+      familyRating: 5,
+      cost: ev.is_free ? "Free" : "See site",
+      url: ev.url || "",
+      source: "Eventbrite",
+      subEvents: [],
+      lat: ev.venue?.latitude ? parseFloat(ev.venue.latitude) : null,
+      lng: ev.venue?.longitude ? parseFloat(ev.venue.longitude) : null,
+    })).filter(ev => {
+      // Distance filter
+      if(lat && lng && ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        return dist <= 40;
+      }
+      return true;
+    });
+  } catch(e) {
+    return [];
+  }
+}
+
 async function geocodeZip(zip) {
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?postalcode=${zip}&country=us&format=json&limit=1`, {
