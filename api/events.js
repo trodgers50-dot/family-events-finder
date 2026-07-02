@@ -62,8 +62,8 @@ export default async function handler(req, res) {
 
   let userLat = lat ? parseFloat(lat) : null;
   let userLng = lng ? parseFloat(lng) : null;
-  // If no coords provided, geocode the zip for accurate filtering
-  if(!userLat && !userLng && zip) {
+  // Always geocode ZIP for accurate filtering - overrides client coords if missing
+  if((!userLat || !userLng) && zip) {
     const coords = await geocodeZip(zip);
     if(coords) { userLat = coords.lat; userLng = coords.lng; }
   }
@@ -445,24 +445,20 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -609,24 +605,20 @@ async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -677,24 +669,20 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -729,24 +717,20 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -781,24 +765,20 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -834,24 +814,20 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -886,24 +862,20 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -938,24 +910,20 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -990,24 +958,20 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -1042,24 +1006,20 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -1094,24 +1054,20 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
@@ -1146,24 +1102,20 @@ async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  if(lat && lng) {
+  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
+  const filterLat = lat || null;
+  const filterLng = lng || null;
+  if(filterLat && filterLng) {
     return results.filter(ev => {
-      // Has GPS coords - filter by distance
+      // Has GPS coords - strict distance filter
       if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-lat)*69,2)+Math.pow((ev.lng-lng)*55,2));
+        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
         return dist <= 40;
       }
-      // No GPS coords - check address matches search state
+      // No GPS coords - state filter only
       const addr = (ev.address || "").toUpperCase();
       const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch) {
-        // If address has a different state, reject it
-        return stateMatch[1] === stateName.toUpperCase();
-      }
-      // No state in address - check if city name appears
-      const cityLower = cityName.toLowerCase();
-      const addrLower = (ev.address || "").toLowerCase();
-      if(addrLower.length > 5 && !addrLower.includes(cityLower)) {
+      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
         return false;
       }
       return true;
