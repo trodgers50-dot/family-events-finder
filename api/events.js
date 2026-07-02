@@ -403,6 +403,8 @@ async function fetchEventbrite(cityName, zip, stateName, lat, lng) {
   }
 }
 
+const STATE_FULL_NAMES = {"AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming"};
+
 async function geocodeZip(zip) {
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?postalcode=${zip}&country=us&format=json&limit=1`, {
@@ -415,10 +417,13 @@ async function geocodeZip(zip) {
 }
 
 async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
-  const zipSuffix = zip ? ` ${zip}` : "";
-  const query = encodeURIComponent(`events near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const stateFullName = STATE_FULL_NAMES[stateName] || stateName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName}` : cityName;
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName}, United States` : cityName;
+  const query = encodeURIComponent(`events in ${cityName} ${stateName}`);
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -460,7 +465,9 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
 // ── RapidAPI ──────────────────────────────────────────────────────────────────
 async function fetchRapidAPI(cityName, zip, stateName, lat, lng) {
   if (!RAPID_KEY) return [];
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`things to do near ${location}${zipSuffix}`);
   const url = `https://real-time-events-search.p.rapidapi.com/search-events?query=${query}&date=any&is_virtual=false&start=0`;
   const r = await fetch(url, {
@@ -571,9 +578,13 @@ async function fetchPredictHQ(zip, userLat, userLng) {
 
 // ── SerpAPI second query — weekend/nightlife focus ────────────────────────────
 async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`things to do this weekend ${location}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -616,9 +627,13 @@ function classifyPHQ(category, title) {
 
 // ── SerpAPI Query 3 — free events focus ──────────────────────────────────────
 async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`free events near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -659,9 +674,13 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 4 — concerts and live music focus ───────────────────────────
 async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`concerts live music near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -702,9 +721,13 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 5 — festivals and outdoor events ────────────────────────────
 async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`festivals outdoor events farmer market near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -732,9 +755,13 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 6 — community events ───────────────────────────────────────
 async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`community events near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -775,9 +802,13 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 7 — kids and family events ──────────────────────────────────
 async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`kids family events near ${location} this weekend`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -818,9 +849,13 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 8 — nightlife and bars ─────────────────────────────────────
 async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`nightlife bars events near ${location} this weekend`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -861,9 +896,13 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 9 — things to do this weekend ─────────────────────────────
 async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`things to do in ${location} this weekend`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -904,9 +943,13 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 10 — outdoor and nature events ──────────────────────────────
 async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`outdoor nature hiking events near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -947,9 +990,13 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 11 — food and farmers market events ────────────────────────
 async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`food festival farmers market events near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
@@ -990,9 +1037,13 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 12 — arts music theater performances ───────────────────────
 async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateName}` : cityName;
+  const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+  const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
+  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const query = encodeURIComponent(`arts theater music performances near ${location}${zipSuffix}`);
-  const locationParam = (lat && lng) ? `&location_ll=${lat},${lng}&radius=15` : `&location=${encodeURIComponent(location)}`;
+  const locationParam = (lat && lng) 
+    ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+    : `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
