@@ -3144,21 +3144,21 @@ if(data.events&&data.events.length>0){
         rating:ev.familyRating||4,who:["all"],
       }));
       // Filter out events too far away when we have coords
-      const MAX_DIST = 40;
+      const MAX_DIST = 75;
       const searchState=(state.info?.state||"").toUpperCase();
-      const searchCity=(state.info?.city||"").toLowerCase();
       const filteredLive = (state.userLat&&state.userLng)
         ? liveEvents.filter(ev=>{
-            if(!ev.distanceMiles&&ev.lat&&ev.lng){
+            // Has GPS coords - filter by distance
+            if(ev.lat&&ev.lng){
               const d=Math.sqrt(Math.pow((parseFloat(ev.lat)-state.userLat)*69,2)+Math.pow((parseFloat(ev.lng)-state.userLng)*55,2));
               return d<=MAX_DIST;
             }
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-            // No coords - only reject if address clearly shows a different state
-            if(searchState && searchState.length===2){
+            // No coords - only reject if address shows a clearly different state
+            if(searchState&&searchState.length===2){
               const addr=(ev.address||ev.location||"").toUpperCase();
               const stateMatch=addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-              if(stateMatch && stateMatch[1] !== searchState) return false;
+              if(stateMatch&&stateMatch[1]!==searchState) return false;
             }
             return true;
           })
