@@ -75,7 +75,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v7_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
+  const cacheKey = `events_v8_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
