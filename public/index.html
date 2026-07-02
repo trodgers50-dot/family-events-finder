@@ -3046,6 +3046,7 @@ let state={
   authEmail:"",authPassword:"",authMode:"signin",
   viewMode:"list",mapInstance:null,
   legalScreen:null,
+  eventSearch:"",
 };
 
 function setState(u){Object.assign(state,u);render();}
@@ -3764,6 +3765,12 @@ function renderHome(){
       <div id="suggestions-container"></div>
       ${state.searchError?`<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.15);border-radius:10px;padding:10px 14px;font-size:13px;color:#fca5a5;margin-bottom:12px">${state.searchError}</div>`:""}
 
+      <div style="margin-bottom:12px;position:relative">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:0.4">🔍</span>
+        <input id="event-search-input" type="text" value="${state.eventSearch}" placeholder="Search events…" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#f1f5f9;padding:10px 12px 10px 36px;font-size:14px;box-sizing:border-box;outline:none">
+        ${state.eventSearch?`<span id="clear-event-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:12px;color:rgba(255,255,255,0.3)">✕</span>`:""}
+      </div>
+
       <div style="margin-bottom:14px">
         <div style="font-size:10px;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">I'm looking for…</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -4363,10 +4370,20 @@ function bindEvents(){
     setState({legalScreen:el.dataset.screen});
   }));
 
+  // Event search input
+  const eventSearchInput=document.getElementById("event-search-input");
+  if(eventSearchInput){
+    eventSearchInput.addEventListener("input",(e)=>setState({eventSearch:e.target.value}));
+    eventSearchInput.addEventListener("focus",(e)=>{e.target.style.borderColor="rgba(99,102,241,0.5)";});
+    eventSearchInput.addEventListener("blur",(e)=>{e.target.style.borderColor="rgba(255,255,255,0.1)";});
+  }
+  const clearSearch=document.getElementById("clear-event-search");
+  if(clearSearch)clearSearch.addEventListener("click",()=>setState({eventSearch:""}));
+
   const back=document.getElementById("back-btn");
   if(back)back.addEventListener("click",()=>{
     state.userLat=null;state.userLng=null;
-    setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list"});
+    setState({screen:"home",zip:"",events:[],info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list",eventSearch:""});
   });
 
   // Submit event button
