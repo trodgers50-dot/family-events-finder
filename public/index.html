@@ -3156,18 +3156,38 @@ if(data.events&&data.events.length>0){
             }
             // Ticketmaster distance field
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-            // Extract zip from address and compare prefix to search zip
+
             const addr=ev.address||ev.location||"";
+            const searchZipPrefix=state.zip?parseInt(state.zip.slice(0,3)):null;
+
+            // Try zip code in address first
             const zipMatch=addr.match(/(\d{5})/);
-            if(zipMatch&&state.zip){
-              const evZipPrefix=parseInt(zipMatch[1].slice(0,3));
-              const searchZipPrefix=parseInt(state.zip.slice(0,3));
-              const diff=Math.abs(evZipPrefix-searchZipPrefix);
-              if(diff>10) return false; // Too far - different zip region
+            if(zipMatch&&searchZipPrefix){
+              const diff=Math.abs(parseInt(zipMatch[1].slice(0,3))-searchZipPrefix);
+              if(diff>10) return false;
+              if(diff<=10) return true;
             }
-            // State filter fallback for addresses without zip
-            const sm=addr.toUpperCase().match(/,\s*([A-Z]{2})[\s,]/);
-            if(sm&&(state.info?.state||"")&&sm[1]!==(state.info?.state||"").toUpperCase()) return false;
+
+            // No zip in address - try to find city name in CITY_ZIP
+            if(searchZipPrefix){
+              const addrLower=addr.toLowerCase();
+              const stateAbbr=(state.info?.state||"").toLowerCase();
+              // Look for "City, ST" pattern in address
+              const cityStateMatch=addr.match(/([A-Za-z\s]+),\s*([A-Z]{2})\s*$/);
+              if(cityStateMatch){
+                const evCity=cityStateMatch[1].trim().toLowerCase();
+                const evState=cityStateMatch[2].toLowerCase();
+                const lookupKey=evCity+" "+evState;
+                const cityEntry=CITY_ZIP[lookupKey]||CITY_ZIP[evCity];
+                if(cityEntry){
+                  const diff=Math.abs(parseInt(cityEntry.zip.slice(0,3))-searchZipPrefix);
+                  if(diff>10) return false;
+                  if(diff<=10) return true;
+                }
+                // City not in our DB but different state - reject
+                if(evState!==stateAbbr) return false;
+              }
+            }
             return true;
           })
         : liveEvents;
