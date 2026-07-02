@@ -3145,25 +3145,22 @@ if(data.events&&data.events.length>0){
       }));
       // Filter out events too far away when we have coords
       const MAX_DIST = 50;
-      const searchState=(state.info?.state||"").toUpperCase();
       const filteredLive = (state.userLat&&state.userLng)
         ? liveEvents.filter(ev=>{
-            // Events with GPS coordinates - hard distance filter
             const evLat=ev.lat?parseFloat(ev.lat):null;
             const evLng=ev.lng?parseFloat(ev.lng):null;
+            // Has GPS coords - distance filter only
             if(evLat&&evLng){
               const d=Math.sqrt(Math.pow((evLat-state.userLat)*69,2)+Math.pow((evLng-state.userLng)*55,2));
               return d<=MAX_DIST;
             }
             // Ticketmaster distance field
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-            // No coords at all - only keep if state matches
-            if(searchState&&searchState.length===2){
-              const addr=(ev.address||ev.location||"").toUpperCase();
-              const sm=addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-              if(sm&&sm[1]!==searchState) return false;
-            }
-            return true;
+            // SerpAPI events with no GPS coords - reject unless Ticketmaster/Eventbrite/PredictHQ source
+            const trustedSources=["Ticketmaster","Eventbrite","PredictHQ","Submitted","Local"];
+            if(trustedSources.includes(ev.source)) return true;
+            // Untrusted source, no GPS - reject
+            return false;
           })
         : liveEvents;
 
