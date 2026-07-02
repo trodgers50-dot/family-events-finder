@@ -3144,21 +3144,24 @@ if(data.events&&data.events.length>0){
         rating:ev.familyRating||4,who:["all"],
       }));
       // Filter out events too far away when we have coords
-      const MAX_DIST = 75;
+      const MAX_DIST = 50;
       const searchState=(state.info?.state||"").toUpperCase();
       const filteredLive = (state.userLat&&state.userLng)
         ? liveEvents.filter(ev=>{
-            // Has GPS coords - filter by distance
-            if(ev.lat&&ev.lng){
-              const d=Math.sqrt(Math.pow((parseFloat(ev.lat)-state.userLat)*69,2)+Math.pow((parseFloat(ev.lng)-state.userLng)*55,2));
+            // Events with GPS coordinates - hard distance filter
+            const evLat=ev.lat?parseFloat(ev.lat):null;
+            const evLng=ev.lng?parseFloat(ev.lng):null;
+            if(evLat&&evLng){
+              const d=Math.sqrt(Math.pow((evLat-state.userLat)*69,2)+Math.pow((evLng-state.userLng)*55,2));
               return d<=MAX_DIST;
             }
+            // Ticketmaster distance field
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-            // No coords - only reject if address shows a clearly different state
+            // No coords at all - only keep if state matches
             if(searchState&&searchState.length===2){
               const addr=(ev.address||ev.location||"").toUpperCase();
-              const stateMatch=addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-              if(stateMatch&&stateMatch[1]!==searchState) return false;
+              const sm=addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+              if(sm&&sm[1]!==searchState) return false;
             }
             return true;
           })
