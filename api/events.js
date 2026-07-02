@@ -440,6 +440,20 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -626,6 +640,20 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -655,6 +683,20 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -714,6 +756,20 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -743,6 +799,20 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -772,6 +842,20 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -801,6 +885,20 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -830,6 +928,20 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
@@ -859,6 +971,20 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
+  // Filter using user coordinates passed from frontend
+  if(userLat && userLng) {
+    return results.filter(ev => {
+      if(ev.lat && ev.lng) {
+        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
+        return dist <= 75;
+      }
+      // No GPS - state filter only
+      const addr = (ev.address||"").toUpperCase();
+      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
+      return true;
+    });
+  }
   return results;
 }
 
