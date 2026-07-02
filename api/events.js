@@ -445,20 +445,6 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -468,6 +454,7 @@ async function fetchRapidAPI(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`things to do near ${location}${zipSuffix}`);
   const url = `https://real-time-events-search.p.rapidapi.com/search-events?query=${query}&date=any&is_virtual=false&start=0`;
   const r = await fetch(url, {
@@ -581,6 +568,7 @@ async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`things to do this weekend ${location}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -630,6 +618,7 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`free events near ${location}${zipSuffix}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -655,20 +644,6 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -677,6 +652,7 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`concerts live music near ${location}${zipSuffix}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -702,20 +678,6 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -724,6 +686,7 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`festivals outdoor events farmer market near ${location}${zipSuffix}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -758,6 +721,7 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`community events near ${location}${zipSuffix}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -783,20 +747,6 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -805,6 +755,7 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`kids family events near ${location} this weekend`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -830,20 +781,6 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -852,6 +789,7 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`nightlife bars events near ${location} this weekend`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -877,20 +815,6 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -899,6 +823,7 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`things to do in ${location} this weekend`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -924,20 +849,6 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -946,6 +857,7 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`outdoor nature hiking events near ${location}${zipSuffix}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -971,20 +883,6 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -993,6 +891,7 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`food festival farmers market events near ${location}${zipSuffix}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
@@ -1018,20 +917,6 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Filter using user coordinates passed from frontend
-  if(userLat && userLng) {
-    return results.filter(ev => {
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-userLat)*69,2)+Math.pow((ev.lng-userLng)*55,2));
-        return dist <= 75;
-      }
-      // No GPS - state filter only
-      const addr = (ev.address||"").toUpperCase();
-      const sm = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(sm && stateName && sm[1] !== stateName.toUpperCase()) return false;
-      return true;
-    });
-  }
   return results;
 }
 
@@ -1040,6 +925,7 @@ async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
+  const zipSuffix = zip ? ` ${zip}` : "";
   const query = encodeURIComponent(`arts theater music performances near ${location}${zipSuffix}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
