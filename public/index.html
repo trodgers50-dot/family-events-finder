@@ -3113,12 +3113,11 @@ async function doSearch(input,regionOverride){
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
   // Show loading spinner while getting city coords
-  if(!state.userLat||!state.userLng){
-    setState({coordsLoading:true,screen:"results",info,zip,events:[],searchError:""});
-    const coords = await getCityCoords(info.city,info.state,zip);
-    if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
-    setState({coordsLoading:false});
-  }
+  // Always geocode for accurate GPS filtering
+  setState({coordsLoading:true,screen:"results",info,zip,events:[],searchError:""});
+  const coords = await getCityCoords(info.city,info.state,zip);
+  if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
+  setState({coordsLoading:false});
 
   setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
   
@@ -3155,14 +3154,11 @@ if(data.events&&data.events.length>0){
               return d<=MAX_DIST;
             }
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-            // No coords - check address doesn't belong to a different state
+            // No coords - only reject if address clearly shows a different state
             if(searchState && searchState.length===2){
               const addr=(ev.address||ev.location||"").toUpperCase();
-              if(addr.length>5){
-                // If address ends with a 2-letter state that doesn't match, reject
-                const stateMatch=addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-                if(stateMatch && stateMatch[1] !== searchState) return false;
-              }
+              const stateMatch=addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
+              if(stateMatch && stateMatch[1] !== searchState) return false;
             }
             return true;
           })
