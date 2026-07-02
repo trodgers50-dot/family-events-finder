@@ -114,7 +114,7 @@ export default async function handler(req, res) {
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
-          serp9Res, serp10Res, serp11Res, serp12Res, ebRes] = await Promise.allSettled([
+          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -132,6 +132,7 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchSerpAPI11(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchSerpAPI12(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchEventbrite(cityName, zip, stateName, userLat, userLng), 5000),
+    fetchWithTimeout(fetchSerpAPINearby(cityName, zip, stateName, userLat, userLng), 3000),
   ]);
 
   if (tmRes.status === "fulfilled") { 
@@ -186,6 +187,9 @@ export default async function handler(req, res) {
 
   if (ebRes.status === "fulfilled") results.events.push(...ebRes.value);
   else results.errors.push("Eventbrite: " + ebRes.reason?.message);
+
+  if (serpNearRes.status === "fulfilled") results.events.push(...serpNearRes.value);
+  else results.errors.push("SerpNearby: " + serpNearRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -404,6 +408,57 @@ async function fetchEventbrite(cityName, zip, stateName, lat, lng) {
 }
 
 const STATE_FULL_NAMES = {"AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas", "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware", "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland", "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi", "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada", "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York", "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah", "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia", "WI": "Wisconsin", "WY": "Wyoming"};
+
+// Find nearby city zips with same prefix for small town searches
+function getNearbyZips(zip) {
+  if(!zip || zip.length < 5) return [];
+  const prefix = zip.slice(0, 3);
+  // Return a few zip codes with same prefix that are likely nearby
+  const prefixNum = parseInt(prefix);
+  const nearbyPrefixes = [prefixNum, prefixNum-1, prefixNum+1].map(p => p.toString().padStart(3,'0'));
+  return nearbyPrefixes;
+}
+
+async function fetchSerpAPINearby(cityName, zip, stateName, lat, lng) {
+  if(!SERP_KEY) return [];
+  try {
+    // Search for events in nearby zip codes
+    const nearbyPrefixes = getNearbyZips(zip);
+    const results = [];
+    
+    // Just do one extra search with the zip code directly
+    const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
+    const serpLocation = `${cityName}, ${stateFullName2}, United States`;
+    const query = encodeURIComponent(`things happening near ${zip} ${stateName}`);
+    const locationParam = (lat && lng) 
+      ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+      : `&location=${encodeURIComponent(serpLocation)}`;
+    
+    const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
+    const r = await fetch(url);
+    if(!r.ok) return [];
+    const d = await r.json();
+    if(d.error) return [];
+    
+    return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+      id: "serpnear_" + i + "_" + zip,
+      name: ev.title || "Local Event",
+      type: classifyByTitle(ev.title || ""),
+      startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+      endDate: parseDate(ev.date?.start_date || ""),
+      location: ev.venue?.name || ev.address?.[0] || cityName,
+      address: ev.address?.join(", ") || cityName,
+      description: ev.description || "",
+      familyRating: 5,
+      cost: ev.ticket_info?.[0]?.price || "Free",
+      url: ev.link || "",
+      source: "Google Events",
+      subEvents: [],
+      lat: ev.gps_coordinates?.latitude || null,
+      lng: ev.gps_coordinates?.longitude || null,
+    }));
+  } catch(e) { return []; }
+}
 
 async function geocodeZip(zip) {
   try {
