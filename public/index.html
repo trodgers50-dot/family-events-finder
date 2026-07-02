@@ -3149,14 +3149,25 @@ if(data.events&&data.events.length>0){
         ? liveEvents.filter(ev=>{
             const evLat=ev.lat?parseFloat(ev.lat):null;
             const evLng=ev.lng?parseFloat(ev.lng):null;
-            // Has GPS coords - distance filter
+            // Has GPS coords - use distance
             if(evLat&&evLng){
               const d=Math.sqrt(Math.pow((evLat-state.userLat)*69,2)+Math.pow((evLng-state.userLng)*55,2));
               return d<=MAX_DIST;
             }
             // Ticketmaster distance field
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-            // No coords - pass through (can't verify location)
+            // Extract zip from address and compare prefix to search zip
+            const addr=ev.address||ev.location||"";
+            const zipMatch=addr.match(/(\d{5})/);
+            if(zipMatch&&state.zip){
+              const evZipPrefix=parseInt(zipMatch[1].slice(0,3));
+              const searchZipPrefix=parseInt(state.zip.slice(0,3));
+              const diff=Math.abs(evZipPrefix-searchZipPrefix);
+              if(diff>10) return false; // Too far - different zip region
+            }
+            // State filter fallback for addresses without zip
+            const sm=addr.toUpperCase().match(/,\s*([A-Z]{2})[\s,]/);
+            if(sm&&(state.info?.state||"")&&sm[1]!==(state.info?.state||"").toUpperCase()) return false;
             return true;
           })
         : liveEvents;
