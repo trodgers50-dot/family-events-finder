@@ -3212,10 +3212,17 @@ const merged=[...submittedEvents,...filteredLive];
         if(!b.date) return -1;
         return a.date.localeCompare(b.date);
       });
+      // Deduplicate - max 3 events per venue to prevent one venue flooding results
+      const venueCounts={};
+      const deduped=merged.filter(ev=>{
+        const venue=(ev.location||ev.name||"unknown").toLowerCase().slice(0,30);
+        venueCounts[venue]=(venueCounts[venue]||0)+1;
+        return venueCounts[venue]<=3;
+      });
+
       const fromCache=data.fromCache===true;
-      // Small delay so spinner doesn't flash off before events render
       setTimeout(()=>{
-        setState({events:merged,loading:false,liveLoading:false,liveData:true,fromCache});
+        setState({events:deduped,loading:false,liveLoading:false,liveData:true,fromCache});
       }, 400);
       loadAttendanceCounts(merged.map(e=>e.id));
       showToast(fromCache?`⚡ ${liveEvents.length} events loaded instantly`:`✓ ${liveEvents.length} live events loaded`);
