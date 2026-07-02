@@ -599,6 +599,18 @@ const CITY_ZIP = {
   "lancaster pa":{zip:"17601",city:"Lancaster",state:"PA",region:"DEFAULT"},
   "york pa":{zip:"17401",city:"York",state:"PA",region:"DEFAULT"},
   "gettysburg":{zip:"17325",city:"Gettysburg",state:"PA",region:"DEFAULT"},
+  "bedford pa":{zip:"15522",city:"Bedford",state:"PA",region:"DEFAULT"},
+  "bedford":{zip:"15522",city:"Bedford",state:"PA",region:"DEFAULT"},
+  "chambersburg":{zip:"17201",city:"Chambersburg",state:"PA",region:"DEFAULT"},
+  "chambersburg pa":{zip:"17201",city:"Chambersburg",state:"PA",region:"DEFAULT"},
+  "york pa":{zip:"17401",city:"York",state:"PA",region:"DEFAULT"},
+  "york":{zip:"17401",city:"York",state:"PA",region:"DEFAULT"},
+  "lancaster pa":{zip:"17601",city:"Lancaster",state:"PA",region:"DEFAULT"},
+  "harrisburg pa":{zip:"17101",city:"Harrisburg",state:"PA",region:"DEFAULT"},
+  "allentown pa":{zip:"18101",city:"Allentown",state:"PA",region:"DEFAULT"},
+  "bethlehem pa":{zip:"18015",city:"Bethlehem",state:"PA",region:"DEFAULT"},
+  "pittsburgh pa":{zip:"15201",city:"Pittsburgh",state:"PA",region:"DEFAULT"},
+  "philadelphia pa":{zip:"19103",city:"Philadelphia",state:"PA",region:"DEFAULT"},
   "hershey":{zip:"17033",city:"Hershey",state:"PA",region:"DEFAULT"},
   "lebanon pa":{zip:"17042",city:"Lebanon",state:"PA",region:"DEFAULT"},
   "bethlehem pa":{zip:"18015",city:"Bethlehem",state:"PA",region:"DEFAULT"},
@@ -3146,52 +3158,54 @@ if(data.events&&data.events.length>0){
       }));
       // Filter out events too far away when we have coords
       const MAX_DIST = 50;
-      const filteredLive = (state.userLat&&state.userLng)
-        ? liveEvents.filter(ev=>{
+      const searchZipPrefix=state.zip?parseInt(state.zip.slice(0,3)):null;
+      const stateAbbr=(state.info?.state||"").toUpperCase();
+
+      const filteredLive = liveEvents.filter(ev=>{
             const evLat=ev.lat?parseFloat(ev.lat):null;
             const evLng=ev.lng?parseFloat(ev.lng):null;
-            // Has GPS coords - use distance
-            if(evLat&&evLng){
+
+            // Has GPS coords AND we have user coords - use distance
+            if(evLat&&evLng&&state.userLat&&state.userLng){
               const d=Math.sqrt(Math.pow((evLat-state.userLat)*69,2)+Math.pow((evLng-state.userLng)*55,2));
               return d<=MAX_DIST;
             }
+
             // Ticketmaster distance field
             if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
 
-            const addr=ev.address||ev.location||"";
-            const searchZipPrefix=state.zip?parseInt(state.zip.slice(0,3)):null;
-
-            // Try zip code in address first
-            const zipMatch=addr.match(/(\d{5})/);
-            if(zipMatch&&searchZipPrefix){
-              const diff=Math.abs(parseInt(zipMatch[1].slice(0,3))-searchZipPrefix);
-              if(diff>7) return false;
-              if(diff<=7) return true;
-            }
-
-            // No zip in address - try to find city name in CITY_ZIP
+            // Always run zip/city filter regardless of whether we have GPS
             if(searchZipPrefix){
-              const addrLower=addr.toLowerCase();
-              const stateAbbr=(state.info?.state||"").toLowerCase();
-              // Look for "City, ST" pattern in address
-              const cityStateMatch=addr.match(/([A-Za-z\s]+),\s*([A-Z]{2})\s*$/);
+              const addr=ev.address||ev.location||"";
+
+              // Extract zip from address
+              const zipMatch=addr.match(/(\d{5})/);
+              if(zipMatch){
+                const diff=Math.abs(parseInt(zipMatch[1].slice(0,3))-searchZipPrefix);
+                if(diff>7) return false;
+                if(diff<=7) return true;
+              }
+
+              // No zip - extract city and look up in CITY_ZIP
+              const cityStateMatch=addr.match(/([A-Za-z][A-Za-z\s]+),\s*([A-Z]{2})(?:\s|$)/);
               if(cityStateMatch){
                 const evCity=cityStateMatch[1].trim().toLowerCase();
-                const evState=cityStateMatch[2].toLowerCase();
-                const lookupKey=evCity+" "+evState;
-                const cityEntry=CITY_ZIP[lookupKey]||CITY_ZIP[evCity];
+                const evState=cityStateMatch[2].toUpperCase();
+                // Reject different state immediately
+                if(evState!==stateAbbr) return false;
+                // Look up city in CITY_ZIP
+                const cityEntry=CITY_ZIP[evCity+" "+evState.toLowerCase()]||CITY_ZIP[evCity];
                 if(cityEntry){
                   const diff=Math.abs(parseInt(cityEntry.zip.slice(0,3))-searchZipPrefix);
-                  if(diff>7) return false;
-                  if(diff<=7) return true;
+                  return diff<=7;
                 }
-                // City not in our DB but different state - reject
-                if(evState!==stateAbbr) return false;
+                // City not in DB but same state - use zip prefix of state's known cities
+                // Reject if address has a number zip nearby that's far away
+                return true;
               }
             }
             return true;
-          })
-        : liveEvents;
+          });
 
 const merged=[...submittedEvents,...filteredLive];
       merged.sort((a,b)=>{
