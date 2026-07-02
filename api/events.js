@@ -6,6 +6,7 @@ const SERP_KEY     = process.env.SERP_KEY  || "";
 const RAPID_KEY    = process.env.RAPID_KEY || "";
 const PHQ_KEY      = process.env.PHQ_KEY   || "";
 const EB_KEY       = process.env.EB_KEY    || "";
+const NINJA_KEY    = process.env.NINJA_KEY || "";
 const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_U5KBIkFT7l0jSSD8QaYJPQ_dEZWQJ63";
 
@@ -114,7 +115,7 @@ export default async function handler(req, res) {
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
-          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes] = await Promise.allSettled([
+          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -133,6 +134,7 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchSerpAPI12(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchEventbrite(cityName, zip, stateName, userLat, userLng), 5000),
     fetchWithTimeout(fetchSerpAPINearby(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchWebNinja(cityName, zip, stateName, userLat, userLng), 5000),
   ]);
 
   if (tmRes.status === "fulfilled") { 
@@ -190,6 +192,9 @@ export default async function handler(req, res) {
 
   if (serpNearRes.status === "fulfilled") results.events.push(...serpNearRes.value);
   else results.errors.push("SerpNearby: " + serpNearRes.reason?.message);
+
+  if (ninjaRes.status === "fulfilled") results.events.push(...ninjaRes.value);
+  else results.errors.push("WebNinja: " + ninjaRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -349,6 +354,40 @@ async function fetchTicketmaster(zip, userLat, userLng) {
 }
 
 // ── SerpAPI ───────────────────────────────────────────────────────────────────
+async function fetchWebNinja(cityName, zip, stateName, lat, lng) {
+  if(!NINJA_KEY) return [];
+  try {
+    const location = stateName && cityName !== "your area" 
+      ? `${cityName}, ${stateName}` 
+      : cityName;
+    const query = encodeURIComponent(`events in ${cityName} ${stateName} ${zip||""}`);
+    const url = `https://api.openwebninja.com/events/search?query=${query}&location=${encodeURIComponent(location)}&limit=50`;
+    const r = await fetch(url, {
+      headers: { "x-api-key": NINJA_KEY }
+    });
+    if(!r.ok) return [];
+    const d = await r.json();
+    const events = d.results || d.events || d.data || [];
+    return events.map((ev, i) => ({
+      id: "ninja_" + i + "_" + zip,
+      name: ev.name || ev.title || "Local Event",
+      type: classifyByTitle(ev.name || ev.title || ""),
+      startDate: ev.start_time ? ev.start_time.split("T")[0] : (ev.start_date || ""),
+      endDate: ev.end_time ? ev.end_time.split("T")[0] : "",
+      location: ev.venue?.name || ev.location?.name || cityName,
+      address: [ev.location?.address, ev.location?.city, ev.location?.state].filter(Boolean).join(", ") || cityName,
+      description: ev.description?.slice(0, 200) || "",
+      familyRating: 5,
+      cost: ev.is_free ? "Free" : (ev.price || "See site"),
+      url: ev.url || ev.link || "",
+      source: "Google Events",
+      subEvents: [],
+      lat: ev.location?.latitude ? parseFloat(ev.location.latitude) : null,
+      lng: ev.location?.longitude ? parseFloat(ev.location.longitude) : null,
+    }));
+  } catch(e) { return []; }
+}
+
 async function fetchEventbrite(cityName, zip, stateName, lat, lng) {
   if(!EB_KEY) return [];
   try {
