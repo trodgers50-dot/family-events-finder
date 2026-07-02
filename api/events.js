@@ -420,7 +420,7 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
   const stateFullName = STATE_FULL_NAMES[stateName] || stateName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName}` : cityName;
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName}, United States` : cityName;
-  const query = encodeURIComponent(`events in ${cityName} ${stateName}`);
+  const query = encodeURIComponent(`events in ${cityName} ${stateName} ${zip||""}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
     : `&location=${encodeURIComponent(serpLocation)}`;
@@ -722,7 +722,7 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
   const zipSuffix = zip ? ` ${zip}` : "";
-  const query = encodeURIComponent(`community events near ${location}${zipSuffix}`);
+  const query = encodeURIComponent(`community events near ${cityName} ${stateName} ${zip||""}`);
   const locationParam = (lat && lng) 
     ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
     : `&location=${encodeURIComponent(serpLocation)}`;
