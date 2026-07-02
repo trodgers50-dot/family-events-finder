@@ -60,13 +60,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Valid 5-digit ZIP required" });
   }
 
-  let userLat = lat ? parseFloat(lat) : null;
-  let userLng = lng ? parseFloat(lng) : null;
-  // Always geocode ZIP for accurate filtering - overrides client coords if missing
-  if((!userLat || !userLng) && zip) {
-    const coords = await geocodeZip(zip);
-    if(coords) { userLat = coords.lat; userLng = coords.lng; }
-  }
+  const userLat = lat ? parseFloat(lat) : null;
+  const userLng = lng ? parseFloat(lng) : null;
   const hasCoords = userLat && userLng;
 
   const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
@@ -445,25 +440,6 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -605,25 +581,6 @@ async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -669,25 +626,6 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -717,25 +655,6 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -765,25 +684,6 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -814,25 +714,6 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -862,25 +743,6 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -910,25 +772,6 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -958,25 +801,6 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -1006,25 +830,6 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -1054,25 +859,6 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
@@ -1102,25 +888,6 @@ async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  // Always filter when we have coordinates (from user GPS or geocoded ZIP)
-  const filterLat = lat || null;
-  const filterLng = lng || null;
-  if(filterLat && filterLng) {
-    return results.filter(ev => {
-      // Has GPS coords - strict distance filter
-      if(ev.lat && ev.lng) {
-        const dist = Math.sqrt(Math.pow((ev.lat-filterLat)*69,2)+Math.pow((ev.lng-filterLng)*55,2));
-        return dist <= 40;
-      }
-      // No GPS coords - state filter only
-      const addr = (ev.address || "").toUpperCase();
-      const stateMatch = addr.match(/,\s*([A-Z]{2})\s*(\d{5})?\s*$/);
-      if(stateMatch && stateName && stateMatch[1] !== stateName.toUpperCase()) {
-        return false;
-      }
-      return true;
-    });
-  }
   return results;
 }
 
