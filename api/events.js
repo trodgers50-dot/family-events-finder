@@ -461,16 +461,14 @@ function getNearbyZips(zip) {
 async function fetchSerpAPINearby(cityName, zip, stateName, lat, lng) {
   if(!SERP_KEY) return [];
   try {
-    // Search for events in nearby zip codes
-    const nearbyPrefixes = getNearbyZips(zip);
-    const results = [];
-    
-    // Just do one extra search with the zip code directly
     const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
     const serpLocation = `${cityName}, ${stateFullName2}, United States`;
-    const query = encodeURIComponent(`things happening near ${zip} ${stateName}`);
+    
+    // Build query using zip area to find events in surrounding towns
+    const zipArea = zip ? zip.slice(0,3) + "xx" : "";
+    const query = encodeURIComponent(`local events ${cityName} ${stateName} area ${zip||""}`);
     const locationParam = (lat && lng) 
-      ? `&location_ll=${lat},${lng}&radius=15&location=${encodeURIComponent(serpLocation)}`
+      ? `&location_ll=${lat},${lng}&radius=25&location=${encodeURIComponent(serpLocation)}`
       : `&location=${encodeURIComponent(serpLocation)}`;
     
     const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
