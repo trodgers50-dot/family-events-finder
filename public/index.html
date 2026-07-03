@@ -3057,6 +3057,17 @@ function withinDays(ds,days){
   const ev=new Date(ds+"T00:00:00");
   return ev>=today&&ev<=cutoff;
 }
+
+// "This Weekend" = today through the coming Sunday (inclusive)
+function isThisWeekendOrSooner(ds){
+  if(!ds) return false;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const dow=today.getDay();               // 0=Sun ... 6=Sat
+  const daysUntilSun = dow===0 ? 0 : (7-dow);
+  const cutoff=new Date(today); cutoff.setDate(today.getDate()+daysUntilSun);
+  const ev=new Date(ds+"T00:00:00");
+  return ev>=today && ev<=cutoff;
+}
 function getWeather(ds,r){
   const W={VA:[{i:"🌨",l:"38°",t:"Cold"},{i:"🌦",l:"52°",t:"Cool"},{i:"🌤",l:"62°",t:"Mild"},{i:"⛅",l:"70°",t:"Nice"},{i:"☀",l:"78°",t:"Warm"},{i:"🌡",l:"88°",t:"Hot"},{i:"🌡",l:"90°",t:"Hot"},{i:"🌡",l:"88°",t:"Hot"},{i:"☀",l:"80°",t:"Warm"},{i:"🌤",l:"68°",t:"Mild"},{i:"🌥",l:"56°",t:"Cool"},{i:"🌨",l:"44°",t:"Cold"}],DEFAULT:[{i:"❄",l:"32°",t:"Cold"},{i:"🌥",l:"42°",t:"Cold"},{i:"🌤",l:"55°",t:"Mild"},{i:"⛅",l:"65°",t:"Nice"},{i:"☀",l:"72°",t:"Warm"},{i:"🌡",l:"82°",t:"Hot"},{i:"🌡",l:"85°",t:"Hot"},{i:"🌡",l:"83°",t:"Hot"},{i:"☀",l:"75°",t:"Warm"},{i:"🌤",l:"63°",t:"Cool"},{i:"🌥",l:"50°",t:"Cool"},{i:"❄",l:"38°",t:"Cold"}]};
   const mo=new Date((ds||"2026-07-01")+"T00:00:00").getMonth();
@@ -3880,10 +3891,15 @@ function renderHome(){
 
 function renderResults(){
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
-  // Temporarily show ALL events to debug why nothing shows
 const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
+    // Respect the "how far out" range (This Weekend / This Week / etc.)
+    if(state.dateRange==="weekend"){
+      if(!isThisWeekendOrSooner(ev.date)) return false;
+    } else if(!withinDays(ev.date,maxDays)){
+      return false;
+    }
     return true;
   }).sort((a,b)=>{
     // 1) Chronological date group first so sections always read
