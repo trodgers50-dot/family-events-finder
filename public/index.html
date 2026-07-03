@@ -3886,21 +3886,28 @@ const filtered=state.events.filter(ev=>{
     if(state.freeOnly&&ev.cost!=="Free")return false;
     return true;
   }).sort((a,b)=>{
-    // Calculate real-time distances
+    // 1) Chronological date group first so sections always read
+    //    Today -> Tomorrow -> This Weekend -> Next Week -> This Month -> Later
+    const GROUP_RANK={"Today":0,"Tomorrow":1,"This Weekend":2,"Next Week":3,"This Month":4,"Later":5};
+    const rankA=GROUP_RANK[getEvGroup(a.date)] ?? 5;
+    const rankB=GROUP_RANK[getEvGroup(b.date)] ?? 5;
+    if(rankA!==rankB) return rankA-rankB;
+
+    // 2) Within the same group, closest events first
     const distA = (state.userLat&&state.userLng&&a.lat&&a.lng)
       ? haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
       : (a.distanceMiles!=null?a.distanceMiles:null);
     const distB = (state.userLat&&state.userLng&&b.lat&&b.lng)
       ? haversine(state.userLat,state.userLng,parseFloat(b.lat),parseFloat(b.lng))
       : (b.distanceMiles!=null?b.distanceMiles:null);
-    // Events with known distance sort before events without
     if(distA!=null&&distB==null) return -1;
     if(distA==null&&distB!=null) return 1;
     if(distA!=null&&distB!=null){
       const band=(d)=>d<5?0:d<15?1:d<30?2:d<60?3:4;
       if(band(distA)!==band(distB)) return band(distA)-band(distB);
     }
-    // Within same distance band, sort by date
+
+    // 3) Then by actual date within the group
     if(!a.date&&!b.date)return 0;
     if(!a.date)return 1;
     if(!b.date)return -1;
