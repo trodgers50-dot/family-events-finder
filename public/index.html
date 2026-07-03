@@ -3209,7 +3209,7 @@ if(data.events&&data.events.length>0){
         rating:ev.familyRating||4,who:["all"],
       }));
       // Filter out events too far away when we have coords
-      const MAX_DIST = 50;
+      const MAX_DIST = 75;
       const searchZipPrefix=state.zip?parseInt(state.zip.slice(0,3)):null;
       const stateAbbr=(state.info?.state||"").toUpperCase();
 
@@ -3278,12 +3278,25 @@ const merged=[...submittedEvents,...filteredLive];
         if(!b.date) return -1;
         return a.date.localeCompare(b.date);
       });
-      // Deduplicate - max 3 events per venue to prevent one venue flooding results
-      const venueCounts={};
+      // Trim repeated listings (e.g. 20 of the same recurring game/series) but
+      // keep different events that happen to share a venue. We cap by a
+      // name+venue signature, not by venue alone, so small-town venues that
+      // host many DIFFERENT events aren't gutted.
+      const seenCounts={};
       const deduped=merged.filter(ev=>{
-        const venue=(ev.location||ev.name||"unknown").toLowerCase().slice(0,30);
-        venueCounts[venue]=(venueCounts[venue]||0)+1;
-        return venueCounts[venue]<=3;
+        // Normalize the event name: drop trailing "vs. X" / dates so a home
+        // team's many games collapse toward one signature.
+        const baseName=(ev.name||"")
+          .toLowerCase()
+          .replace(/\s+(vs\.?|versus|v\.)\s+.*/,"")   // "Erie Otters vs. X" -> "erie otters"
+          .replace(/[0-9]/g,"")
+          .trim()
+          .slice(0,24);
+        const venue=(ev.location||"").toLowerCase().slice(0,20);
+        const sig=baseName+"|"+venue;
+        seenCounts[sig]=(seenCounts[sig]||0)+1;
+        // Allow up to 3 of the same repeated series/name at the same venue.
+        return seenCounts[sig]<=3;
       });
 
       const fromCache=data.fromCache===true;
