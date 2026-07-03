@@ -31,6 +31,16 @@ input,textarea{font-family:-apple-system,BlinkMacSystemFont,sans-serif;}
 <div id="map-container" style="display:none;position:fixed;inset:0;z-index:50;background:#0a0a0f;"></div>
 
 <script type="module">
+// Open links in system browser (Capacitor + web compatible)
+function openExternal(url){
+  if(!url)return;
+  if(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.Browser){
+    window.Capacitor.Plugins.Browser.open({url:url});
+  } else {
+    window.open(url,'_blank','noopener,noreferrer');
+  }
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 const PROXY_URL    = "https://buzzfinder.app/api/events";
 const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
@@ -3350,7 +3360,7 @@ function addMapMarker(map, lat, lng, ev, bounds) {
       <div style="font-size:11px;color:rgba(255,255,255,0.25);margin-bottom:8px">${san(ev.location)}</div>
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:12px;font-weight:700;color:${meta.color}">${san(ev.cost)}</span>
-        ${ev.url?`<span onclick="window.open('${ev.url}','_system')" style="color:#a5b4fc;font-size:11px;cursor:pointer">View →</span>`:""}
+        ${ev.url?`<span onclick="openExternal('${ev.url}')" style="color:#a5b4fc;font-size:11px;cursor:pointer">View →</span>`:""}
       </div>
     </div>
   `,{maxWidth:260});
@@ -4052,7 +4062,7 @@ const filtered=state.events.filter(ev=>{
 
         <div style="display:flex;gap:8px">
           <div class="cal-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${ev.date||""}" data-addr="${encodeURIComponent(ev.address||ev.location)}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">📅 Calendar</div>
-          ${ev.url?`<div onclick="window.open('${ev.url}','_system')" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20">🎟 Tickets</div>`:""}
+          ${ev.url?`<div onclick="openExternal('${ev.url}')" style="flex:1;padding:10px;border-radius:10px;background:${meta.color}12;color:${meta.color};font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid ${meta.color}20">🎟 Tickets</div>`:""}
           <div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" data-url="${ev.url||""}" style="flex:1;padding:10px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.4);font-size:12px;font-weight:600;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Share ↗</div>
         </div>
       </div>`:""}
