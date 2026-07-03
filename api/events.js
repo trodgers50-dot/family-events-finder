@@ -7,6 +7,7 @@ const RAPID_KEY    = process.env.RAPID_KEY || "";
 const PHQ_KEY      = process.env.PHQ_KEY   || "";
 const EB_KEY       = process.env.EB_KEY    || "";
 const NINJA_KEY    = process.env.NINJA_KEY || "";
+const USDA_KEY     = process.env.USDA_KEY  || "";
 const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_U5KBIkFT7l0jSSD8QaYJPQ_dEZWQJ63";
 
@@ -115,7 +116,7 @@ export default async function handler(req, res) {
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
-          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes] = await Promise.allSettled([
+          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes, usdaRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -135,6 +136,7 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchEventbrite(cityName, zip, stateName, userLat, userLng), 5000),
     fetchWithTimeout(fetchSerpAPINearby(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchWebNinja(cityName, zip, stateName, userLat, userLng), 5000),
+    fetchWithTimeout(fetchUSDAMarkets(cityName, zip, stateName, userLat, userLng), 5000),
   ]);
 
   if (tmRes.status === "fulfilled") { 
@@ -195,6 +197,9 @@ export default async function handler(req, res) {
 
   if (ninjaRes.status === "fulfilled") results.events.push(...ninjaRes.value);
   else results.errors.push("WebNinja: " + ninjaRes.reason?.message);
+
+  if (usdaRes.status === "fulfilled") results.events.push(...usdaRes.value);
+  else results.errors.push("USDA: " + usdaRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -354,6 +359,43 @@ async function fetchTicketmaster(zip, userLat, userLng) {
 }
 
 // ── SerpAPI ───────────────────────────────────────────────────────────────────
+async function fetchUSDAMarkets(cityName, zip, stateName, lat, lng) {
+  if(!USDA_KEY || !zip) return [];
+  try {
+    // USDA Local Food Portal - farmers markets by zip with radius
+    const url = `https://www.usdalocalfoodportal.com/api/farmersmarket/?apikey=${USDA_KEY}&zip=${zip}&radius=30`;
+    const r = await fetch(url);
+    if(!r.ok) return [];
+    const d = await r.json();
+    const markets = Array.isArray(d) ? d : (d.data || []);
+
+    return markets.slice(0, 15).map((m, i) => {
+      // Markets are recurring - create an event for the coming Saturday
+      const nextSat = new Date();
+      nextSat.setDate(nextSat.getDate() + ((6 - nextSat.getDay() + 7) % 7 || 7));
+      const dateStr = nextSat.toISOString().split("T")[0];
+
+      return {
+        id: "usda_" + (m.listing_id || i) + "_" + zip,
+        name: m.listing_name || "Farmers Market",
+        type: "Market",
+        startDate: dateStr,
+        endDate: dateStr,
+        location: m.listing_name || "Farmers Market",
+        address: [m.location_address, m.location_city, m.location_state, m.location_zipcode].filter(Boolean).join(", "),
+        description: m.listing_desc || "Local farmers market featuring fresh produce and goods from area farms." ,
+        familyRating: 5,
+        cost: "Free",
+        url: m.media_website || "",
+        source: "USDA",
+        subEvents: [],
+        lat: m.location_y ? parseFloat(m.location_y) : null,
+        lng: m.location_x ? parseFloat(m.location_x) : null,
+      };
+    });
+  } catch(e) { return []; }
+}
+
 async function fetchWebNinja(cityName, zip, stateName, lat, lng) {
   if(!NINJA_KEY) return [];
   try {
