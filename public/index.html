@@ -2987,6 +2987,62 @@ const TYPE_META={
 };
 function m(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
 
+// Cache-backed ZIP -> {lat,lng} geocoder (Zippopotam, free, works client-side).
+// Cached in localStorage so each ZIP is only ever looked up once.
+const _zipMem={};
+async function geocodeZipCached(zip){
+  if(!zip||zip.length!==5) return null;
+  if(_zipMem[zip]!==undefined) return _zipMem[zip];
+  try{
+    const cached=localStorage.getItem("zipgeo:"+zip);
+    if(cached){ const v=JSON.parse(cached); _zipMem[zip]=v; return v; }
+  }catch(e){}
+  try{
+    const r=await fetch("https://api.zippopotam.us/us/"+zip);
+    if(r.ok){
+      const d=await r.json();
+      const p=d.places&&d.places[0];
+      if(p){
+        const v={lat:parseFloat(p.latitude),lng:parseFloat(p.longitude)};
+        _zipMem[zip]=v;
+        try{ localStorage.setItem("zipgeo:"+zip,JSON.stringify(v)); }catch(e){}
+        return v;
+      }
+    }
+  }catch(e){}
+  _zipMem[zip]=null;
+  try{ localStorage.setItem("zipgeo:"+zip,"null"); }catch(e){}
+  return null;
+}
+
+// Best-effort: pull a usable 5-digit ZIP out of an event, using the address text
+// first, then falling back to the city name via our CITY_ZIP table.
+function eventZip(ev){
+  const addr=ev.address||ev.location||"";
+  const m=addr.match(/(\d{5})/);
+  if(m) return m[1];
+  const cs=addr.match(/([A-Za-z][A-Za-z\s]+),\s*([A-Z]{2})(?:\s|$)/);
+  if(cs){
+    const c=cs[1].trim().toLowerCase(), s=cs[2].toLowerCase();
+    const e=CITY_ZIP[c+" "+s]||CITY_ZIP[c];
+    if(e) return e.zip;
+  }
+  return null;
+}
+
+// Attach real lat/lng (from ZIP geocoding) to any events missing coordinates.
+async function enrichCoords(events){
+  const need=events.filter(ev=>!(ev.lat&&ev.lng)).map(ev=>({ev,zip:eventZip(ev)})).filter(x=>x.zip);
+  const uniqueZips=[...new Set(need.map(x=>x.zip))];
+  const coordsByZip={};
+  await Promise.all(uniqueZips.map(async z=>{ coordsByZip[z]=await geocodeZipCached(z); }));
+  need.forEach(({ev,zip})=>{
+    const c=coordsByZip[zip];
+    if(c){ ev.lat=c.lat; ev.lng=c.lng; }
+  });
+  return events;
+}
+
 function haversine(lat1,lng1,lat2,lng2){
   const R=3959,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
   const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
@@ -3219,56 +3275,38 @@ if(data.events&&data.events.length>0){
         sched:ev.subEvents?.map(s=>`${s.time} · ${s.name}`)||[],
         rating:ev.familyRating||4,who:["all"],
       }));
-      // Filter out events too far away when we have coords
-      const MAX_DIST = 75;
-      const searchZipPrefix=state.zip?parseInt(state.zip.slice(0,3)):null;
+
+      // Give every event real coordinates where we can (geocode its ZIP, cached),
+      // then filter purely by true distance. No more ZIP-prefix guessing.
+      await enrichCoords(liveEvents);
+
+      const MAX_DIST = 50; // miles
+      const haveSearchCoords = !!(state.userLat && state.userLng);
       const stateAbbr=(state.info?.state||"").toUpperCase();
+      const ALWAYS_KEEP=["Submitted","Local","USDA"]; // user-added / local sources
 
       const filteredLive = liveEvents.filter(ev=>{
-            const evLat=ev.lat?parseFloat(ev.lat):null;
-            const evLng=ev.lng?parseFloat(ev.lng):null;
+        // Trusted local/user sources always show
+        if(ALWAYS_KEEP.includes(ev.source)) return true;
 
-            // Has GPS coords AND we have user coords - use distance
-            if(evLat&&evLng&&state.userLat&&state.userLng){
-              const d=Math.sqrt(Math.pow((evLat-state.userLat)*69,2)+Math.pow((evLng-state.userLng)*55,2));
-              return d<=MAX_DIST;
-            }
+        const evLat=ev.lat?parseFloat(ev.lat):null;
+        const evLng=ev.lng?parseFloat(ev.lng):null;
 
-            // Ticketmaster distance field
-            if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
+        // Real coordinates -> real distance
+        if(evLat&&evLng&&haveSearchCoords){
+          return haversine(state.userLat,state.userLng,evLat,evLng)<=MAX_DIST;
+        }
 
-            // Always run zip/city filter regardless of whether we have GPS
-            if(searchZipPrefix){
-              const addr=ev.address||ev.location||"";
+        // Ticketmaster provides its own distance
+        if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
 
-              // Extract zip from address
-              const zipMatch=addr.match(/(\d{5})/);
-              if(zipMatch){
-                const diff=Math.abs(parseInt(zipMatch[1].slice(0,3))-searchZipPrefix);
-                if(diff>7) return false;
-                if(diff<=7) return true;
-              }
-
-              // No zip - extract city and look up in CITY_ZIP
-              const cityStateMatch=addr.match(/([A-Za-z][A-Za-z\s]+),\s*([A-Z]{2})(?:\s|$)/);
-              if(cityStateMatch){
-                const evCity=cityStateMatch[1].trim().toLowerCase();
-                const evState=cityStateMatch[2].toUpperCase();
-                // Reject different state immediately
-                if(evState!==stateAbbr) return false;
-                // Look up city in CITY_ZIP
-                const cityEntry=CITY_ZIP[evCity+" "+evState.toLowerCase()]||CITY_ZIP[evCity];
-                if(cityEntry){
-                  const diff=Math.abs(parseInt(cityEntry.zip.slice(0,3))-searchZipPrefix);
-                  return diff<=7;
-                }
-                // City not in DB but same state - use zip prefix of state's known cities
-                // Reject if address has a number zip nearby that's far away
-                return true;
-              }
-            }
-            return true;
-          });
+        // Couldn't place it. If we know the search location, drop the unplaceable
+        // event only when its address clearly names a different state; otherwise keep.
+        const addr=ev.address||ev.location||"";
+        const cs=addr.match(/,\s*([A-Z]{2})(?:\s|$)/);
+        if(cs && stateAbbr && cs[1].toUpperCase()!==stateAbbr) return false;
+        return true;
+      });
 
 const merged=[...submittedEvents,...filteredLive];
       merged.sort((a,b)=>{
