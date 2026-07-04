@@ -3372,55 +3372,15 @@ async function loadAttendanceCounts(eventIds){
 function detectLocation(){
   if(!navigator.geolocation){showToast("GPS not available");return;}
   setState({gpsLoading:true});
-  navigator.geolocation.getCurrentPosition(async pos=>{
+  navigator.geolocation.getCurrentPosition(pos=>{
     const{latitude:lat,longitude:lng}=pos.coords;
+    const r=latLngToRegion(lat,lng);
     state.userLat=lat;state.userLng=lng;
-    // Reverse-geocode the real coordinates instead of guessing from a hardcoded list
-    let place=await reverseGeocode(lat,lng);
-    if(!place){
-      // Fallback to the old bounding-box guess only if reverse geocoding fails
-      place=latLngToRegion(lat,lng);
-    }
-    setState({gpsLoading:false,searchInput:place.city});
-    doSearch(place.city,place);
-    showToast(`📍 Found you in ${place.city}${place.state?", "+place.state:""}`);
-  },()=>{setState({gpsLoading:false});showToast("Couldn't get location");},{timeout:8000,enableHighAccuracy:true});
+    setState({gpsLoading:false,searchInput:r.city});
+    doSearch(r.city,r);
+    showToast(`📍 Found you in ${r.city}`);
+  },()=>{setState({gpsLoading:false});showToast("Couldn't get location");},{timeout:8000});
 }
-
-// Turn GPS coordinates into a real {city,state,zip,region} using Nominatim reverse geocoding
-async function reverseGeocode(lat,lng){
-  try{
-    const url=`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12&addressdetails=1`;
-    const r=await fetch(url,{headers:{"Accept":"application/json"}});
-    if(!r.ok) return null;
-    const d=await r.json();
-    const a=d.address||{};
-    const city=a.city||a.town||a.village||a.hamlet||a.municipality||a.county||"";
-    const state=a.state||"";
-    const zip=a.postcode?String(a.postcode).slice(0,5):"";
-    if(!city) return null;
-    return {
-      city,
-      state: US_STATE_ABBR[state]||state||"",
-      zip,
-      region: US_STATE_ABBR[state]||"DEFAULT"
-    };
-  }catch(e){ return null; }
-}
-
-// Full state name -> abbreviation (Nominatim returns full names)
-const US_STATE_ABBR={
-  "Alabama":"AL","Alaska":"AK","Arizona":"AZ","Arkansas":"AR","California":"CA",
-  "Colorado":"CO","Connecticut":"CT","Delaware":"DE","Florida":"FL","Georgia":"GA",
-  "Hawaii":"HI","Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS",
-  "Kentucky":"KY","Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA",
-  "Michigan":"MI","Minnesota":"MN","Mississippi":"MS","Missouri":"MO","Montana":"MT",
-  "Nebraska":"NE","Nevada":"NV","New Hampshire":"NH","New Jersey":"NJ","New Mexico":"NM",
-  "New York":"NY","North Carolina":"NC","North Dakota":"ND","Ohio":"OH","Oklahoma":"OK",
-  "Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI","South Carolina":"SC",
-  "South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT",
-  "Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY"
-};
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 let leafletMap=null;
