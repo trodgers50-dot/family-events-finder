@@ -57,7 +57,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const { zip, lat, lng } = req.query;
+  const { zip, lat, lng, city, state } = req.query;
   if (!zip || zip.length !== 5) {
     return res.status(400).json({ error: "Valid 5-digit ZIP required" });
   }
@@ -68,7 +68,8 @@ export default async function handler(req, res) {
 
   const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB = VB_ZIPS.includes(zip);
-  const cityName = getCityFromZip(zip);
+  const passedCity = (city||"").trim();
+  const cityName = (passedCity && passedCity.toLowerCase()!=="your area") ? passedCity : getCityFromZip(zip);
 
   // ── Cache check ─────────────────────────────────────────────────────────────
   // Use ZIP as cache key (not coords - same city should share cache)
@@ -112,7 +113,7 @@ export default async function handler(req, res) {
     };
   const prefix2 = zip.slice(0,2);
   const prefix3 = zip.slice(0,3);
-  const stateName = stateMap[prefix2] || stateMap[prefix3] || "";
+  const stateName = (state||"").trim().toUpperCase() || stateMap[prefix2] || stateMap[prefix3] || "";
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
