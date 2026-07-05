@@ -3959,8 +3959,8 @@ function renderHome(){
 
       <div style="margin-bottom:12px;position:relative">
         <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:0.4">🔍</span>
-        <input id="event-search-input" type="text" placeholder="Search events…" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#f1f5f9;padding:10px 12px 10px 36px;font-size:14px;box-sizing:border-box;outline:none">
-        <span id="clear-event-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:12px;color:rgba(255,255,255,0.75);display:none">✕</span>
+        <input id="event-search-input" type="text" value="${(state.eventSearch||'').replace(/"/g,'&quot;')}" placeholder="Search events…" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#f1f5f9;padding:10px 12px 10px 36px;font-size:14px;box-sizing:border-box;outline:none">
+        ${state.eventSearch?`<span id="clear-event-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:12px;color:rgba(255,255,255,0.75)">✕</span>`:""}
       </div>
 
       <div style="margin-bottom:14px">
@@ -3989,11 +3989,18 @@ function renderResults(){
 const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     if(state.freeOnly&&ev.cost!=="Free")return false;
-    // Respect the "how far out" range (This Weekend / This Week / etc.)
+    // Respect the "how far out" range. Use the same date field the grouping uses.
+    const evDate=ev.date||ev.startDate;
     if(state.dateRange==="weekend"){
-      if(!isThisWeekendOrSooner(ev.date)) return false;
-    } else if(!withinDays(ev.date,maxDays)){
+      if(!isThisWeekendOrSooner(evDate)) return false;
+    } else if(!withinDays(evDate,maxDays)){
       return false;
+    }
+    // Text search across name / venue / address / description / type
+    if(state.eventSearch){
+      const q=state.eventSearch;
+      const hay=((ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||"")+" "+(ev.type||"")).toLowerCase();
+      if(!hay.includes(q)) return false;
     }
     return true;
   }).sort((a,b)=>{
@@ -4580,29 +4587,21 @@ function bindEvents(){
   const eventSearchInput=document.getElementById("event-search-input");
   if(eventSearchInput){
     eventSearchInput.addEventListener("input",(e)=>{
-      const q=e.target.value.toLowerCase();
-      state.eventSearch=q;
-      // Show/hide cards based on search without re-rendering
-      document.querySelectorAll("[data-search]").forEach(card=>{
-        const matches=!q||card.dataset.search.includes(q);
-        card.style.display=matches?"":"none";
-      });
-      // Update clear button visibility
-      const clearBtn=document.getElementById("clear-event-search");
-      if(clearBtn) clearBtn.style.display=q?"":"none";
+      const pos=e.target.selectionStart;
+      state.eventSearch=e.target.value.toLowerCase();
+      render();
+      // Re-render rebuilds the input, so restore focus and cursor position
+      const inp=document.getElementById("event-search-input");
+      if(inp){ inp.focus(); try{ inp.setSelectionRange(pos,pos); }catch(_){} }
     });
     eventSearchInput.addEventListener("focus",(e)=>{e.target.style.borderColor="rgba(99,102,241,0.5)";});
     eventSearchInput.addEventListener("blur",(e)=>{e.target.style.borderColor="rgba(255,255,255,0.1)";});
   }
   const clearSearch=document.getElementById("clear-event-search");
   if(clearSearch){
-    clearSearch.style.display="none";
     clearSearch.addEventListener("click",()=>{
       state.eventSearch="";
-      const inp=document.getElementById("event-search-input");
-      if(inp) inp.value="";
-      document.querySelectorAll("[data-search]").forEach(card=>card.style.display="");
-      clearSearch.style.display="none";
+      render();
     });
   }
 
