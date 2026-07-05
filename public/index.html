@@ -3388,6 +3388,13 @@ function detectLocation(){
       // Fallback to the old bounding-box guess only if reverse geocoding fails
       place=latLngToRegion(lat,lng);
     }
+    // Guarantee a valid 5-digit ZIP; borrow one from CITY_ZIP if reverse geocoding
+    // didn't return a postcode, so the API never rejects the request.
+    if(!place.zip || String(place.zip).length!==5){
+      const key=(place.city||"").toLowerCase()+" "+(place.state||"").toLowerCase();
+      const e=CITY_ZIP[key]||CITY_ZIP[(place.city||"").toLowerCase()];
+      place.zip = e?e.zip : (latLngToRegion(lat,lng).zip||"");
+    }
     setState({gpsLoading:false,searchInput:place.city});
     doSearch(place.city,place);
     showToast(`📍 Found you in ${place.city}${place.state?", "+place.state:""}`);
