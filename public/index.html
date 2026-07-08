@@ -3403,26 +3403,56 @@ function detectLocation(){
 
 // Turn GPS coordinates into a real {city,state,zip,region} using Nominatim reverse geocoding
 async function reverseGeocode(lat,lng){
+  // Primary: BigDataCloud — keyless, CORS-friendly, reliable for rural coords
   try{
-    const url=`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12&addressdetails=1`;
     const ctrl=new AbortController();
-    const t=setTimeout(()=>ctrl.abort(),3500);
-    const r=await fetch(url,{headers:{"Accept":"application/json"},signal:ctrl.signal});
+    const t=setTimeout(()=>ctrl.abort(),6000);
+    const r=await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`,{signal:ctrl.signal});
     clearTimeout(t);
-    if(!r.ok) return null;
-    const d=await r.json();
-    const a=d.address||{};
-    const city=a.city||a.town||a.village||a.hamlet||a.municipality||a.county||"";
-    const state=a.state||"";
-    const zip=a.postcode?String(a.postcode).slice(0,5):"";
-    if(!city) return null;
-    return {
-      city,
-      state: US_STATE_ABBR[state]||state||"",
-      zip,
-      region: US_STATE_ABBR[state]||"DEFAULT"
-    };
-  }catch(e){ return null; }
+    if(r.ok){
+      const d=await r.json();
+      if((d.countryCode==="US")||(!d.countryCode)){
+        // In rural areas `city` can be blank; fall back to locality / county name
+        const county=(d.localityInfo&&d.localityInfo.administrative||[]).slice().reverse().find(a=>a.name&&/county|city|town/i.test(a.description||""));
+        const city=d.city||d.locality||(county&&county.name)||"";
+        const stateName=d.principalSubdivision||"";
+        const zip=d.postcode?String(d.postcode).slice(0,5):"";
+        if(city){
+          return {
+            city,
+            state: US_STATE_ABBR[stateName]||stateName||"",
+            zip,
+            region: US_STATE_ABBR[stateName]||"DEFAULT"
+          };
+        }
+      }
+    }
+  }catch(e){}
+
+  // Fallback: Nominatim
+  try{
+    const ctrl=new AbortController();
+    const t=setTimeout(()=>ctrl.abort(),5000);
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=12&addressdetails=1`,{headers:{"Accept":"application/json"},signal:ctrl.signal});
+    clearTimeout(t);
+    if(r.ok){
+      const d=await r.json();
+      const a=d.address||{};
+      const city=a.city||a.town||a.village||a.hamlet||a.municipality||a.county||"";
+      const state=a.state||"";
+      const zip=a.postcode?String(a.postcode).slice(0,5):"";
+      if(city){
+        return {
+          city,
+          state: US_STATE_ABBR[state]||state||"",
+          zip,
+          region: US_STATE_ABBR[state]||"DEFAULT"
+        };
+      }
+    }
+  }catch(e){}
+
+  return null;
 }
 
 // Full state name -> abbreviation (Nominatim returns full names)
@@ -4260,6 +4290,7 @@ const filtered=state.events.filter(ev=>{
           </div>
         </div>
       </div>
+      ${`<div style="background:#ec4899;color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:8px;margin:8px 0;text-align:center">DBG events=${state.events.length} filtered=${filtered.length} range=${state.dateRange} maxDays=${maxDays} search="${state.eventSearch||''}"</div>`}
       ${filtered.length===0?`<div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.75);font-size:14px">Nothing found for your filters</p><div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div></div>`:cards}
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
         <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
