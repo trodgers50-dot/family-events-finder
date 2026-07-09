@@ -86,7 +86,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v8_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
+  const cacheKey = `events_v9_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
-          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes, usdaRes] = await Promise.allSettled([
+          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes, usdaRes, coordRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -147,6 +147,7 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchSerpAPINearby(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchWebNinja(cityName, zip, stateName, userLat, userLng), 5000),
     fetchWithTimeout(fetchUSDAMarkets(cityName, zip, stateName, userLat, userLng), 5000),
+    fetchWithTimeout(fetchSerpAPIAroundCoords(cityName, zip, stateName, userLat, userLng), 4000),
   ]);
 
   if (tmRes.status === "fulfilled") { 
@@ -210,6 +211,9 @@ export default async function handler(req, res) {
 
   if (usdaRes.status === "fulfilled") results.events.push(...usdaRes.value);
   else results.errors.push("USDA: " + usdaRes.reason?.message);
+
+  if (coordRes.status === "fulfilled") results.events.push(...coordRes.value);
+  else results.errors.push("SerpCoords: " + coordRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
@@ -369,6 +373,37 @@ async function fetchTicketmaster(zip, userLat, userLng) {
 }
 
 // ── SerpAPI ───────────────────────────────────────────────────────────────────
+async function fetchSerpAPIAroundCoords(cityName, zip, stateName, lat, lng) {
+  if(!SERP_KEY || !lat || !lng) return [];
+  try {
+    // Pure coordinate search: no city name at all. Best for counties/hamlets
+    // whose name Google doesn't index as an events location.
+    const query = encodeURIComponent(`events this month`);
+    const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us&location_ll=${lat},${lng}&radius=50`;
+    const r = await fetch(url);
+    if(!r.ok) return [];
+    const d = await r.json();
+    if(d.error) return [];
+    return (d.events_results || []).slice(0, 15).map((e, i) => ({
+      id: "serpcoord_" + i + "_" + (zip||"gps"),
+      name: e.title || "Local Event",
+      type: classifyByTitle(e.title || ""),
+      startDate: parseDate(e.date?.start_date || e.date?.when || ""),
+      endDate: parseDate(e.date?.start_date || ""),
+      location: e.venue?.name || e.address?.[0] || cityName,
+      address: e.address?.join(", ") || cityName,
+      description: e.description || "",
+      familyRating: 5,
+      cost: e.ticket_info?.[0]?.price || "See site",
+      url: e.link || "",
+      source: "Google Events",
+      subEvents: [],
+      lat: e.gps_coordinates?.latitude || null,
+      lng: e.gps_coordinates?.longitude || null,
+    }));
+  } catch(e) { return []; }
+}
+
 async function fetchUSDAMarkets(cityName, zip, stateName, lat, lng) {
   if(!USDA_KEY || !zip) return [];
   try {
@@ -516,9 +551,10 @@ async function fetchSerpAPINearby(cityName, zip, stateName, lat, lng) {
     const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
     const serpLocation = `${cityName}, ${stateFullName2}, United States`;
     
-    // Query the surrounding AREA, not just the city name. For tiny towns the
-    // city name returns nothing, so lean on the ZIP + "near" phrasing.
-    const query = encodeURIComponent(`events near ${zip||""} ${cityName} ${stateName}`.trim());
+    // Query the surrounding AREA, not just the city name. For tiny towns/counties
+    // (e.g. "Dinwiddie") the name returns nothing, so ask Google for what's
+    // happening *around* the coordinates/ZIP instead.
+    const query = encodeURIComponent(`things to do near ${cityName} ${stateName} ${zip||""}`.trim());
     const locationParam = (lat && lng) 
       ? `&location_ll=${lat},${lng}&radius=50&location=${encodeURIComponent(serpLocation)}`
       : `&location=${encodeURIComponent(serpLocation)}`;
