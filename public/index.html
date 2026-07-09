@@ -3254,6 +3254,14 @@ async function doSearch(input,regionOverride){
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
+  // Reset filters ONCE at the start of a new search (not on later re-renders,
+  // which would silently undo the user's filter choices while results load).
+  state.typeFilter="All";
+  state.whoFilter="all";
+  state.freeOnly=false;
+  state.dateRange="3months";
+  state.eventSearch="";
+
   // If this search came from GPS (regionOverride), keep the user's REAL coordinates.
   // Only geocode the city when we don't already have a precise position.
   setState({coordsLoading:true,screen:"results",info,zip,events:[],searchError:""});
@@ -3264,7 +3272,7 @@ async function doSearch(input,regionOverride){
   }
   setState({coordsLoading:false});
 
-  setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
+  setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
   
   
   // Phase 2 - live events
@@ -4297,23 +4305,6 @@ const filtered=state.events.filter(ev=>{
           </div>
         </div>
       </div>
-      ${(()=>{
-        const evs=state.events;
-        const dr=state.dateRange;
-        const md=maxDays;
-        let datePass=0;
-        evs.forEach(e=>{
-          const dv=e.date||e.startDate;
-          const ok = dr==="weekend" ? isThisWeekendOrSooner(dv) : withinDays(dv,md);
-          if(ok) datePass++;
-        });
-        const samples=evs.slice(0,3).map(e=>JSON.stringify(e.date||e.startDate)).join(" , ");
-        return `<div style="background:#ec4899;color:#fff;font-size:11px;font-weight:700;padding:8px 10px;border-radius:8px;margin:8px 0;text-align:center;line-height:1.5">
-          DBG range=${dr} maxDays=${md}<br>
-          events=${evs.length} datePass=${datePass} filtered=${filtered.length}<br>
-          dates: ${samples}
-        </div>`;
-      })()}
       ${filtered.length===0?`<div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.75);font-size:14px">Nothing found for your filters</p><div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div></div>`:cards}
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
         <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
@@ -4332,7 +4323,7 @@ const filtered=state.events.filter(ev=>{
         <div style="text-align:center;margin-top:8px;font-size:10px;color:rgba(255,255,255,0.75);display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <a href="https://buzzfinder.app/privacy.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Privacy Policy</a>
           <a href="https://buzzfinder.app/terms.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Terms of Use</a>
-          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build C3</span>
+          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build D4</span>
         </div>
       </div>
     </div>`}
