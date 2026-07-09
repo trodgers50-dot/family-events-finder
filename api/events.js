@@ -70,7 +70,15 @@ export default async function handler(req, res) {
   const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB = VB_ZIPS.includes(zip||"");
   const passedCity = (city||"").trim();
-  const cityName = (passedCity && passedCity.toLowerCase()!=="your area") ? passedCity : getCityFromZip(zip);
+  let cityName = (passedCity && passedCity.toLowerCase()!=="your area") ? passedCity : getCityFromZip(zip);
+  // getCityFromZip falls back to a STATE NAME (e.g. "Virginia") for unknown ZIPs,
+  // which makes Google search the whole state. Detect that and mark it unusable.
+  const STATE_FULL_SET = new Set(Object.values(STATE_FULL_NAMES||{}));
+  const cityIsReallyAState = STATE_FULL_SET.has(cityName);
+  if(cityIsReallyAState || !cityName || cityName.toLowerCase()==="your area"){
+    // Prefer the precise coordinates for querying; keep the label generic.
+    cityName = passedCity || cityName;
+  }
 
   // ── Cache check ─────────────────────────────────────────────────────────────
   // Use ZIP as cache key (not coords - same city should share cache)
@@ -508,9 +516,9 @@ async function fetchSerpAPINearby(cityName, zip, stateName, lat, lng) {
     const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
     const serpLocation = `${cityName}, ${stateFullName2}, United States`;
     
-    // Build query using zip area to find events in surrounding towns
-    const zipArea = zip ? zip.slice(0,3) + "xx" : "";
-    const query = encodeURIComponent(`local events ${cityName} ${stateName} area ${zip||""}`);
+    // Query the surrounding AREA, not just the city name. For tiny towns the
+    // city name returns nothing, so lean on the ZIP + "near" phrasing.
+    const query = encodeURIComponent(`events near ${zip||""} ${cityName} ${stateName}`.trim());
     const locationParam = (lat && lng) 
       ? `&location_ll=${lat},${lng}&radius=50&location=${encodeURIComponent(serpLocation)}`
       : `&location=${encodeURIComponent(serpLocation)}`;
