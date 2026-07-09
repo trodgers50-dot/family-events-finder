@@ -3251,11 +3251,14 @@ async function doSearch(input,regionOverride){
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
-  // Show loading spinner while getting city coords
-  // Always geocode for accurate GPS filtering
+  // If this search came from GPS (regionOverride), keep the user's REAL coordinates.
+  // Only geocode the city when we don't already have a precise position.
   setState({coordsLoading:true,screen:"results",info,zip,events:[],searchError:""});
-  const coords = await getCityCoords(info.city,info.state,zip);
-  if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
+  const fromGPS = !!(regionOverride && regionOverride.fromGPS);
+  if(!(fromGPS && state.userLat && state.userLng)){
+    const coords = await getCityCoords(info.city,info.state,zip);
+    if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
+  }
   setState({coordsLoading:false});
 
   setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,typeFilter:"All",whoFilter:"all",freeOnly:false,dateRange:"3months",liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
@@ -3395,6 +3398,7 @@ function detectLocation(){
       const e=CITY_ZIP[key]||CITY_ZIP[(place.city||"").toLowerCase()];
       place.zip = e?e.zip : (latLngToRegion(lat,lng).zip||"");
     }
+    place.fromGPS=true;
     setState({gpsLoading:false,searchInput:place.city});
     doSearch(place.city,place);
     showToast(`📍 Found you in ${place.city}${place.state?", "+place.state:""}`);
