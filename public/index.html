@@ -4030,6 +4030,7 @@ function renderHome(){
 }
 
 function renderResults(){
+  window.__dbg={checked:0,kept:0,samples:[]};
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
 const filtered=state.events.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
@@ -4037,7 +4038,12 @@ const filtered=state.events.filter(ev=>{
     // Respect the "how far out" range. Use the same date field the grouping uses.
     const evDate=ev.date||ev.startDate;
     if(state.dateRange==="weekend"){
-      if(!isThisWeekendOrSooner(evDate)) return false;
+      const ok=isThisWeekendOrSooner(evDate);
+      window.__dbg=window.__dbg||{checked:0,kept:0,samples:[]};
+      window.__dbg.checked++;
+      if(ok) window.__dbg.kept++;
+      else if(window.__dbg.samples.length<3) window.__dbg.samples.push(String(evDate));
+      if(!ok) return false;
     } else if(!withinDays(evDate,maxDays)){
       return false;
     }
@@ -4305,6 +4311,7 @@ const filtered=state.events.filter(ev=>{
           </div>
         </div>
       </div>
+      ${`<div style="background:#ec4899;color:#fff;font-size:11px;font-weight:700;padding:8px;border-radius:8px;margin:8px 0;text-align:center;line-height:1.5">DBG range=${state.dateRange} events=${state.events.length} filtered=${filtered.length}<br>weekendChecked=${(window.__dbg||{}).checked||0} weekendKept=${(window.__dbg||{}).kept||0}<br>rejected: ${(((window.__dbg||{}).samples)||[]).join(" , ")||"none"}</div>`}
       ${filtered.length===0?`<div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.75);font-size:14px">Nothing found for your filters</p><div class="clear-all" style="display:inline-block;margin-top:12px;padding:8px 18px;border-radius:10px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:13px;cursor:pointer;border:1px solid rgba(255,255,255,0.06)">Clear filters</div></div>`:cards}
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
         <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
@@ -4323,7 +4330,7 @@ const filtered=state.events.filter(ev=>{
         <div style="text-align:center;margin-top:8px;font-size:10px;color:rgba(255,255,255,0.75);display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <a href="https://buzzfinder.app/privacy.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Privacy Policy</a>
           <a href="https://buzzfinder.app/terms.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Terms of Use</a>
-          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build D4</span>
+          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build E5</span>
         </div>
       </div>
     </div>`}
@@ -4604,7 +4611,7 @@ function bindEvents(){
       state.viewMode="map";render();
       setTimeout(()=>{
         const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
-        const filtered=state.events.filter(ev=>withinDays(ev.date,maxDays));
+        const filtered=state.events.filter(ev=>{const dv=ev.date||ev.startDate;return state.dateRange==="weekend"?isThisWeekendOrSooner(dv):withinDays(dv,maxDays);});
         let center=null;
         if(state.userLat&&state.userLng)center=[state.userLat,state.userLng];
         else{
