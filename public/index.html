@@ -4208,7 +4208,7 @@ const filtered=state.events.filter(ev=>{
     if(diff<=31) return "This Month";
     return "Later";
   }
-  const GROUP_COLORS={"Today":"#6ee7b7","Tomorrow":"#a5b4fc","This Weekend":"#f97316","Next Week":"rgba(255,255,255,0.4)","This Month":"rgba(255,255,255,0.3)","Later":"rgba(255,255,255,0.2)"};
+  const GROUP_COLORS={"Today":"#6ee7b7","Tomorrow":"#a5b4fc","This Weekend":"#f97316","Next Week":"rgba(255,255,255,0.75)","This Month":"rgba(255,255,255,0.75)","Later":"rgba(255,255,255,0.75)"};
   let lastGroup="";
 
   const cards=filtered.map((ev,idx)=>{
@@ -4352,7 +4352,7 @@ const filtered=state.events.filter(ev=>{
     <div style="max-width:700px;margin:0 auto;padding:12px 14px 80px">
       <div style="margin-bottom:12px">
         <div style="display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap">
-          ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)"};display:flex;align-items:center;gap:4px">${w.icon} ${w.label}</div>`).join("")}
+          ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.75)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)"};display:flex;align-items:center;gap:4px">${w.icon} ${w.label}</div>`).join("")}
         </div>
         <div style="display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap">
           ${DATE_RANGES.map(d=>`<div class="range-filter" data-range="${d.id}" style="padding:5px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.3)":"rgba(255,255,255,0.05)"}">${d.label}</div>`).join("")}
@@ -4364,7 +4364,7 @@ const filtered=state.events.filter(ev=>{
               const active=state.typeFilter===t;
               const meta=m2(t);
               const icon=t!=="All"?meta.icon+" ":"⚡ ";
-              return`<div class="type-filter" data-type="${t}" style="padding:6px 14px;border-radius:999px;background:${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.06)"};color:${active?"#fff":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:${active?700:500};cursor:pointer;border:1.5px solid ${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0;transition:all 0.15s">${icon}${t}</div>`;
+              return`<div class="type-filter" data-type="${t}" style="padding:6px 14px;border-radius:999px;background:${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.06)"};color:${active?"#fff":"rgba(255,255,255,0.75)"};font-size:12px;font-weight:${active?700:500};cursor:pointer;border:1.5px solid ${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0;transition:all 0.15s">${icon}${t}</div>`;
             }).join("")}
             <div class="toggle-free" style="padding:6px 14px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.06)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid ${state.freeOnly?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0">💚 Free</div>
             <div class="clear-all" style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:12px;cursor:pointer;border:1.5px solid rgba(255,255,255,0.06);white-space:nowrap;flex-shrink:0">✕ Clear</div>
