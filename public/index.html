@@ -3269,10 +3269,7 @@ async function doSearch(input,regionOverride){
   const info=resolved.city?resolved:getRegionInfo(zip);
   // Reset filters ONCE at the start of a new search (not on later re-renders,
   // which would silently undo the user's filter choices while results load).
-  state.typeFilter="All";
-  state.whoFilter="all";
-  state.freeOnly=false;
-  state.dateRange="3months";
+ 
   state.eventSearch="";
 
   // If this search came from GPS (regionOverride), keep the user's REAL coordinates.
