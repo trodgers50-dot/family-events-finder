@@ -49,8 +49,10 @@ export default async function handler(req, res) {
       return true;
     });
 
-    res.status(200).json({ places: deduped.slice(0, 20) });
-  } catch (e) {
+res.status(200).json({
+      places: deduped.slice(0, 20),
+      debug: responses.map(r => ({ type: r.type, status: r.data.status, error: r.data.error_message || null }))
+    });  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 }
