@@ -3198,6 +3198,7 @@ let state={
   session:null,user:null,
   authModal:null,authError:"",authLoading:false,
   authEmail:"",authPassword:"",authMode:"signin",
+  dataMode:"events",
   viewMode:"list",mapInstance:null,
   legalScreen:null,
   eventSearch:"",
@@ -3582,6 +3583,10 @@ function addMapMarker(map, lat, lng, ev, bounds) {
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:12px;font-weight:700;color:${meta.color}">${san(ev.cost)}</span>
         ${ev.url?`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="color:#a5b4fc;font-size:11px;text-decoration:none">View →</a>`:""}
+      </div>
+      <div style="display:flex;background:rgba(255,255,255,0.06);border-radius:14px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;margin-bottom:14px">
+        <div id="mode-events-btn" style="flex:1;text-align:center;padding:10px;cursor:pointer;background:${state.dataMode==="events"?"rgba(99,102,241,0.25)":"transparent"};color:${state.dataMode==="events"?"#a5b4fc":"rgba(255,255,255,0.5)"};font-size:13px;font-weight:600">📅 Events</div>
+        <div id="mode-places-btn" style="flex:1;text-align:center;padding:10px;cursor:pointer;background:${state.dataMode==="places"?"rgba(99,102,241,0.25)":"transparent"};color:${state.dataMode==="places"?"#a5b4fc":"rgba(255,255,255,0.5)"};font-size:13px;font-weight:600">📍 Places</div>
       </div>
     </div>
   `,{maxWidth:260});
@@ -4642,7 +4647,10 @@ function bindEvents(){
   }));
   const legalBack=document.getElementById("legal-back");
   if(legalBack)legalBack.addEventListener("click",()=>setState({legalScreen:null}));
-
+const modeEvents=document.getElementById("mode-events-btn");
+  if(modeEvents)modeEvents.addEventListener("click",()=>setState({dataMode:"events"}));
+  const modePlaces=document.getElementById("mode-places-btn");
+  if(modePlaces)modePlaces.addEventListener("click",()=>setState({dataMode:"places"}));
   const gps=document.getElementById("gps-btn");
   if(gps)gps.addEventListener("click",detectLocation);
   const signinBtn=document.getElementById("signin-btn");
