@@ -4355,7 +4355,7 @@ const filtered=state.events.filter(ev=>{
           ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.75)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)"};display:flex;align-items:center;gap:4px">${w.icon} ${w.label}</div>`).join("")}
         </div>
         <div style="display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap">
-          ${DATE_RANGES.map(d=>`<div class="range-filter" data-range="${d.id}" style="padding:5px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.3)":"rgba(255,255,255,0.05)"}">${d.label}</div>`).join("")}
+          ${DATE_RANGES.map(d=>`<div class="range-filter" data-range="${d.id}" style="padding:5px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.75)"};font-size:11px;cursor:pointer;border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.3)":"rgba(255,255,255,0.05)"}">${d.label}</div>`).join("")}
         </div>
         <!-- Scrollable category filter row -->
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:7px">
