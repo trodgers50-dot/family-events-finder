@@ -3202,6 +3202,7 @@ let state={
   viewMode:"list",mapInstance:null,
   legalScreen:null,
   eventSearch:"",
+  places:[],placesLoading:false,placesLoaded:false,
 };
 
 function setState(u){Object.assign(state,u);render();}
@@ -3282,6 +3283,7 @@ async function doSearch(input,regionOverride){
     if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
   }
   setState({coordsLoading:false});
+  if(state.userLat&&state.userLng) fetchPlaces(state.userLat,state.userLng);
 
   setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
   
@@ -3398,7 +3400,17 @@ const merged=[...submittedEvents,...filteredLive];
     setState({loading:false,liveLoading:false,liveData:false});
   }
 }
-
+async function fetchPlaces(lat,lng){
+  if(lat==null||lng==null) return;
+  setState({placesLoading:true});
+  try{
+    const r=await fetch(`/api/places?lat=${lat}&lng=${lng}`);
+    const data=await r.json();
+    setState({places:data.places||[],placesLoading:false,placesLoaded:true});
+  }catch(e){
+    setState({placesLoading:false,placesLoaded:true});
+  }
+}
 async function loadAttendanceCounts(eventIds){
   const counts=await getAttendanceCounts(eventIds);
   setState({attendanceCounts:{...state.attendanceCounts,...counts}});
@@ -3697,7 +3709,7 @@ async function restoreSession(){
 }
 
 function render(){
-  document.getElementById("root").innerHTML=state.legalScreen?renderLegal():state.screen==="home"?renderHome():renderResults();
+  document.getElementById("root").innerHTML=state.legalScreen?renderLegal():state.screen==="home"?renderHome():(state.dataMode==="places"?renderPlacesResults():renderResults());
   bindEvents();
   // Only create modal if it doesn't exist yet
   const existingModal = document.getElementById("auth-modal-overlay");
@@ -4091,8 +4103,52 @@ function renderHome(){
     </div>
   </div>`;
 }
+function renderPlacesResults(){
+  const places=state.places||[];
+  return`
+  ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap">${state.toast}</div>`:""}
+  <div style="min-height:100vh;background:#0a0a0f;color:#fff">
+    <div style="padding:16px 16px 10px;border-bottom:1px solid rgba(255,255,255,0.05);position:sticky;top:0;background:rgba(10,10,15,0.96);backdrop-filter:blur(16px);z-index:100">
+      <div style="display:flex;align-items:center;gap:10px;max-width:700px;margin:0 auto 8px">
+        <div id="back-btn" style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">←</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:17px;letter-spacing:-0.3px">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:1px">${places.length} things to do nearby</div>
+        </div>
+      </div>
+      <div style="display:flex;background:rgba(255,255,255,0.06);border-radius:10px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;max-width:700px;margin:0 auto">
+        <div id="mode-events-btn2" style="flex:1;text-align:center;padding:8px;font-size:12px;cursor:pointer;color:rgba(255,255,255,0.5)">📅 Events</div>
+        <div id="mode-places-btn2" style="flex:1;text-align:center;padding:8px;font-size:12px;cursor:pointer;background:rgba(99,102,241,0.3);color:#a5b4fc">🗺️ Things To Do</div>
+      </div>
+    </div>
+    <div style="max-width:700px;margin:0 auto;padding:12px 14px 80px">
+      ${state.placesLoading?`
+        <div style="text-align:center;padding:56px 0"><div style="width:40px;height:40px;margin:0 auto 16px;border-radius:50%;border:3px solid rgba(99,102,241,0.1);border-top-color:#6366f1;animation:spin 0.8s linear infinite"></div><p style="color:rgba(255,255,255,0.75);font-size:14px">Finding things to do nearby…</p></div>
+      `:places.length===0?`
+        <div style="text-align:center;padding:56px 0"><div style="font-size:32px;margin-bottom:12px;opacity:0.2">◯</div><p style="color:rgba(255,255,255,0.75);font-size:14px">Nothing found nearby yet</p></div>
+      `:places.map(p=>{
+        const typeLabels={park:"🌲 Park",tourist_attraction:"📍 Attraction",restaurant:"🍴 Restaurant",bar:"🍺 Bar",museum:"🖼️ Museum",campground:"⛺ Campground"};
+        const label=typeLabels[p.type]||p.type;
+        return`
+        <div style="border-radius:16px;overflow:hidden;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);margin-bottom:12px">
+          ${p.photo?`<div style="height:140px;overflow:hidden"><img src="${p.photo}" alt="" onerror="this.parentElement.style.display='none'" style="width:100%;height:100%;object-fit:cover"/></div>`:""}
+          <div style="padding:14px">
+            <div style="font-size:11px;font-weight:700;color:#a5b4fc;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px">${label}</div>
+            <div style="font-weight:600;font-size:16px;color:#f1f5f9;margin-bottom:4px">${san(p.name)}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.75);margin-bottom:8px">${san(p.address)}</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              ${p.rating?`<span style="font-size:12px;color:#fbbf24">★ ${p.rating} ${p.userRatingsTotal?`(${p.userRatingsTotal})`:""}</span>`:""}
+              ${p.openNow===true?`<span style="font-size:11px;color:#6ee7b7">Open now</span>`:p.openNow===false?`<span style="font-size:11px;color:#fca5a5">Closed</span>`:""}
+            </div>
+            <a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(p.name+" "+p.address)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:10px;font-size:12px;color:rgba(99,162,255,0.8);text-decoration:none;background:rgba(99,162,255,0.1);padding:6px 12px;border-radius:8px">↗ Directions</a>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>
+  </div>`;
+}
 
-function renderResults(){
+  function renderResults(){
   window.__dbg={checked:0,kept:0,samples:[]};
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
 const filtered=state.events.filter(ev=>{
