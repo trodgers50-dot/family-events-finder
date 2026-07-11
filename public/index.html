@@ -3269,26 +3269,27 @@ async function doSearch(input,regionOverride){
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
   const info=resolved.city?resolved:getRegionInfo(zip);
-  // Reset filters ONCE at the start of a new search (not on later re-renders,
-  // which would silently undo the user's filter choices while results load).
- 
+  state.typeFilter="All";
+  state.whoFilter="all";
+  state.freeOnly=false;
   state.eventSearch="";
+  state.userLat=null;
+  state.userLng=null;
 
-  // If this search came from GPS (regionOverride), keep the user's REAL coordinates.
-  // Only geocode the city when we don't already have a precise position.
   setState({coordsLoading:true,screen:"results",info,zip,events:[],searchError:""});
   const fromGPS = !!(regionOverride && regionOverride.fromGPS);
-  if(!(fromGPS && state.userLat && state.userLng)){
+  if(!(fromGPS && regionOverride.lat && regionOverride.lng)){
     const coords = await getCityCoords(info.city,info.state,zip);
     if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
+  } else {
+    state.userLat=regionOverride.lat;
+    state.userLng=regionOverride.lng;
   }
   setState({coordsLoading:false});
   if(state.userLat&&state.userLng) fetchPlaces(state.userLat,state.userLng);
 
   setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
-  
-  
-  // Phase 2 - live events
+
   try{
     const coordParams=state.userLat&&state.userLng?`&lat=${state.userLat}&lng=${state.userLng}`:"";
     const controller = new AbortController();
@@ -3301,7 +3302,7 @@ async function doSearch(input,regionOverride){
     clearTimeout(timeout);
     if(!res.ok)throw new Error("API error");
     const data=await res.json();
-if(data.events&&data.events.length>0){
+    if(data.events&&data.events.length>0){
       const liveEvents=data.events.map(ev=>({
         ...ev,emoji:m2(ev.type).icon,photo:ev.image||getPhoto(ev.type,ev.id),
         weather:getWeather(ev.startDate,getRegionInfo(zip).region),
@@ -3310,42 +3311,28 @@ if(data.events&&data.events.length>0){
         rating:ev.familyRating||4,who:["all"],
       }));
 
-      // Give every event real coordinates where we can (geocode its ZIP, cached),
-      // then filter purely by true distance. No more ZIP-prefix guessing.
       try{ await enrichCoords(liveEvents); }catch(e){}
 
-      const MAX_DIST = 50; // miles
+      const MAX_DIST = 50;
       const haveSearchCoords = !!(state.userLat && state.userLng);
       const stateAbbr=(state.info?.state||"").toUpperCase();
-      const ALWAYS_KEEP=["Submitted","Local","USDA"]; // user-added / local sources
+      const ALWAYS_KEEP=["Submitted","Local","USDA"];
 
-      window.__loc={raw:liveEvents.length,kept:0,lat:state.userLat,lng:state.userLng,city:info?.city||"",dropped:[]};
       const filteredLive = liveEvents.filter(ev=>{
-        // Trusted local/user sources always show
         if(ALWAYS_KEEP.includes(ev.source)) return true;
-
         const evLat=ev.lat?parseFloat(ev.lat):null;
         const evLng=ev.lng?parseFloat(ev.lng):null;
-
-        // Real coordinates -> real distance
         if(evLat&&evLng&&haveSearchCoords){
           return haversine(state.userLat,state.userLng,evLat,evLng)<=MAX_DIST;
         }
-
-        // Ticketmaster provides its own distance
         if(ev.distanceMiles!=null) return ev.distanceMiles<=MAX_DIST;
-
-        // Couldn't place it. If we know the search location, drop the unplaceable
-        // event only when its address clearly names a different state; otherwise keep.
         const addr=ev.address||ev.location||"";
         const cs=addr.match(/,\s*([A-Z]{2})(?:\s|$)/);
         if(cs && stateAbbr && cs[1].toUpperCase()!==stateAbbr) return false;
         return true;
       });
-      window.__loc.kept=filteredLive.length;
-      window.__loc.dropped=liveEvents.filter(e=>!filteredLive.includes(e)).slice(0,3).map(e=>(e.address||e.location||"?").slice(0,28));
 
-const merged=[...submittedEvents,...filteredLive];
+      const merged=[...submittedEvents,...filteredLive];
       merged.sort((a,b)=>{
         const distA=(state.userLat&&state.userLng&&a.lat&&a.lng)
           ?haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
@@ -3364,24 +3351,13 @@ const merged=[...submittedEvents,...filteredLive];
         if(!b.date) return -1;
         return a.date.localeCompare(b.date);
       });
-      // Trim repeated listings (e.g. 20 of the same recurring game/series) but
-      // keep different events that happen to share a venue. We cap by a
-      // name+venue signature, not by venue alone, so small-town venues that
-      // host many DIFFERENT events aren't gutted.
+
       const seenCounts={};
       const deduped=merged.filter(ev=>{
-        // Normalize the event name: drop trailing "vs. X" / dates so a home
-        // team's many games collapse toward one signature.
-        const baseName=(ev.name||"")
-          .toLowerCase()
-          .replace(/\s+(vs\.?|versus|v\.)\s+.*/,"")   // "Erie Otters vs. X" -> "erie otters"
-          .replace(/[0-9]/g,"")
-          .trim()
-          .slice(0,24);
+        const baseName=(ev.name||"").toLowerCase().replace(/\s+(vs\.?|versus|v\.)\s+.*/,"").replace(/[0-9]/g,"").trim().slice(0,24);
         const venue=(ev.location||"").toLowerCase().slice(0,20);
         const sig=baseName+"|"+venue;
         seenCounts[sig]=(seenCounts[sig]||0)+1;
-        // Allow up to 3 of the same repeated series/name at the same venue.
         return seenCounts[sig]<=3;
       });
 
@@ -3398,17 +3374,6 @@ const merged=[...submittedEvents,...filteredLive];
     console.log("Live fetch failed:",e.message,e);
     showToast("Could not load events: "+e.message);
     setState({loading:false,liveLoading:false,liveData:false});
-  }
-}
-async function fetchPlaces(lat,lng){
-  if(lat==null||lng==null) return;
-  setState({placesLoading:true});
-  try{
-    const r=await fetch(`/api/places?lat=${lat}&lng=${lng}`);
-    const data=await r.json();
-    setState({places:data.places||[],placesLoading:false,placesLoaded:true});
-  }catch(e){
-    setState({placesLoading:false,placesLoaded:true});
   }
 }
 async function loadAttendanceCounts(eventIds){
