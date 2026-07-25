@@ -3265,6 +3265,7 @@ async function getCityCoords(city, state, zip) {
 }
 
 async function doSearch(input,regionOverride){
+  alert("TEST - doSearch started");
   const resolved=regionOverride||resolveSearch(input);
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
