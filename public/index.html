@@ -3286,6 +3286,7 @@ async function doSearch(input,regionOverride){
     state.userLng=regionOverride.lng;
   }
   setState({coordsLoading:false});
+ setState({searchError:`DEBUG coords: lat=${state.userLat} lng=${state.userLng}`}); 
   if(state.userLat&&state.userLng) fetchPlaces(state.userLat,state.userLng);
 
   setState({loading:false,liveLoading:true,screen:"results",events:[],openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
