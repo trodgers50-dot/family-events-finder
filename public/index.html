@@ -3265,7 +3265,6 @@ async function getCityCoords(city, state, zip) {
 }
 
 async function doSearch(input,regionOverride){
-  alert("TEST - doSearch started");
   const resolved=regionOverride||resolveSearch(input);
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
@@ -3280,9 +3279,11 @@ async function doSearch(input,regionOverride){
   setState({coordsLoading:true,screen:"results",info,zip,events:[],searchError:""});
   const fromGPS = !!(regionOverride && regionOverride.fromGPS);
   if(!(fromGPS && regionOverride.lat && regionOverride.lng)){
+    state.searchError=`DEBUG: fromGPS=${fromGPS} branch=calling-getCityCoords`;
     const coords = await getCityCoords(info.city,info.state,zip);
     if(coords){state.userLat=coords.lat;state.userLng=coords.lng;}
   } else {
+    state.searchError=`DEBUG: fromGPS=${fromGPS} branch=using-regionOverride-coords lat=${regionOverride.lat} lng=${regionOverride.lng}`;
     state.userLat=regionOverride.lat;
     state.userLng=regionOverride.lng;
   }
