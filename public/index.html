@@ -4371,7 +4371,7 @@ const filtered=state.events.filter(ev=>{
       <div style="display:flex;align-items:center;gap:10px;max-width:700px;margin:0 auto 8px">
         <div id="back-btn" style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">←</div>
         <div style="flex:1;min-width:0">
-<div style="font-weight:700;font-size:17px;letter-spacing:-0.3px">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""} [DEBUG lat:${state.userLat} lng:${state.userLng} | ${window.__coordsDebug||"no lookup ran"}]</div>
+<div style="font-weight:700;font-size:17px;letter-spacing:-0.3px">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""} [DEBUG lat:${state.userLat} lng:${state.userLng}]</div>
           <div style="font-size:12px;color:rgba(255,255,255,0.75);margin-top:1px">${filtered.length} things to do · ${selectedRange?.label} · ${state.liveData?(state.fromCache?'<span style="color:#f59e0b">⚡ Cached</span>':'<span style="color:#6ee7b7">● Live</span>'):'<span style="color:rgba(255,255,255,0.75)">● Preview</span>'}</div>
           <div id="submit-btn" style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:4px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-weight:600">＋ Add a local event</div>
         </div>
