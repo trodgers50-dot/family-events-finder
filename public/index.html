@@ -3243,34 +3243,12 @@ async function fetchSubmittedEvents(city, zip) {
   } catch(e){ return []; }
 }
 
-async function getCityCoords(city, state, zip) {
+
+  async function getCityCoords(city, state, zip) {
   try {
     const zipQuery = zip && zip.length === 5 ? zip : null;
     const cityQuery = city && city !== "your area" ? `${city}${state?", "+state:""}` : null;
     const queries = zipQuery ? [zipQuery, cityQuery] : [cityQuery];
-    for(const q of queries) {
-      if(!q) continue;
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=0&countrycodes=us`;
-      const r = await fetch(url, {headers:{"User-Agent":"BuzzFinderApp/1.0"}});
-      const d = await r.json();
-      window.__coordsDebug = "query="+q+" raw="+JSON.stringify(d);
-      if(d&&d[0]) return {lat:parseFloat(d[0].lat), lng:parseFloat(d[0].lon)};
-    }
-    window.__coordsDebug = "NO RESULT for any query, city="+city+" zip="+zip;
-  } catch(e){
-    window.__coordsDebug = "ERROR: "+e.message;
-  }
-  return null;
-}
-  try {
-    // Use ZIP code first for accuracy - avoids ambiguous city names like "Franklin PA"
-    // which has multiple matches in different parts of the state
-    const zipQuery = zip && zip.length === 5 ? zip : null;
-    const cityQuery = city && city !== "your area" ? `${city}${state?", "+state:""}` : null;
-    
-    // Try ZIP first, then fall back to city name
-    const queries = zipQuery ? [zipQuery, cityQuery] : [cityQuery];
-    
     for(const q of queries) {
       if(!q) continue;
       const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&addressdetails=0&countrycodes=us`;
@@ -3281,8 +3259,6 @@ async function getCityCoords(city, state, zip) {
   } catch(e){}
   return null;
 }
-
-async function doSearch(input,regionOverride){
   const resolved=regionOverride||resolveSearch(input);
   if(!resolved){setState({searchError:`Couldn't find "${input}". Try a city name or ZIP.`});return;}
   const zip=resolved.zip;
