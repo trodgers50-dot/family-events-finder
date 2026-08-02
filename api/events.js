@@ -86,7 +86,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v10_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
+  const cacheKey = `events_v12_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -384,7 +384,7 @@ async function fetchSerpAPIAroundCoords(cityName, zip, stateName, lat, lng) {
     if(!r.ok) return [];
     const d = await r.json();
     if(d.error) return [];
-    return (d.events_results || []).slice(0, 15).map((e, i) => ({
+    return (d.events_results || []).slice(0, 25).map((e, i) => ({
       id: "serpcoord_" + i + "_" + (zip||"gps"),
       name: e.title || "Local Event",
       type: classifyByTitle(e.title || ""),
@@ -414,7 +414,7 @@ async function fetchUSDAMarkets(cityName, zip, stateName, lat, lng) {
     const d = await r.json();
     const markets = Array.isArray(d) ? d : (d.data || []);
 
-    return markets.slice(0, 15).map((m, i) => {
+    return markets.slice(0, 25).map((m, i) => {
       // Markets are recurring - create an event for the coming Saturday
       const nextSat = new Date();
       nextSat.setDate(nextSat.getDate() + ((6 - nextSat.getDay() + 7) % 7 || 7));
@@ -565,7 +565,7 @@ async function fetchSerpAPINearby(cityName, zip, stateName, lat, lng) {
     const d = await r.json();
     if(d.error) return [];
     
-    return (d.events_results || []).slice(0, 10).map((ev, i) => ({
+    return (d.events_results || []).slice(0, 25).map((ev, i) => ({
       id: "serpnear_" + i + "_" + zip,
       name: ev.title || "Local Event",
       type: classifyByTitle(ev.title || ""),
@@ -608,7 +608,7 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -645,7 +645,7 @@ async function fetchRapidAPI(cityName, zip, stateName, lat, lng) {
     }
   });
   const d = await r.json();
-  return (d.data || []).slice(0, 12).map((ev, i) => ({
+  return (d.data || []).slice(0, 25).map((ev, i) => ({
     id: "rapid_" + i + "_" + zip,
     name: ev.name || ev.title || "Local Event",
     type: classifyByTitle(ev.name || ev.title || ""),
@@ -670,7 +670,7 @@ async function fetchVirginiaBeach() {
   if (!r.ok) throw new Error(`VB returned ${r.status}`);
   const d = await r.json();
   const events = Array.isArray(d) ? d : d.events || d.data || [];
-  return events.slice(0, 10).map((ev, i) => ({
+  return events.slice(0, 25).map((ev, i) => ({
     id: "vb_" + i,
     name: ev.title || ev.name || "City Event",
     type: classifyByTitle(ev.title || ev.name || ""),
@@ -757,7 +757,7 @@ async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp2_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -807,7 +807,7 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp3_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -841,7 +841,7 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp4_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: "Music",
@@ -875,7 +875,7 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp5_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -910,7 +910,7 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp6_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -944,7 +944,7 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp7_" + i + "_" + zip,
     name: ev.title || "Family Event",
     type: classifyByTitle(ev.title || ""),
@@ -978,7 +978,7 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp8_" + i + "_" + zip,
     name: ev.title || "Nightlife Event",
     type: "Nightlife",
@@ -1012,7 +1012,7 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp9_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -1046,7 +1046,7 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp10_" + i + "_" + zip,
     name: ev.title || "Outdoor Event",
     type: "Outdoor",
@@ -1080,7 +1080,7 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp11_" + i + "_" + zip,
     name: ev.title || "Food Event",
     type: classifyByTitle(ev.title || ""),
@@ -1114,7 +1114,7 @@ async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
   const r = await fetch(url);
   const d = await r.json();
   if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 12).map((ev, i) => ({
+  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp12_" + i + "_" + zip,
     name: ev.title || "Arts Event",
     type: classifyByTitle(ev.title || ""),
