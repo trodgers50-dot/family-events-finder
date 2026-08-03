@@ -86,7 +86,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v13_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
+  const cacheKey = `events_v14_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -126,7 +126,7 @@ export default async function handler(req, res) {
 
   const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
           serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
-          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes, usdaRes, coordRes] = await Promise.allSettled([
+          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes, usdaRes] = await Promise.allSettled([
     fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
@@ -147,7 +147,6 @@ export default async function handler(req, res) {
     fetchWithTimeout(fetchSerpAPINearby(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchWebNinja(cityName, zip, stateName, userLat, userLng), 5000),
     fetchWithTimeout(fetchUSDAMarkets(cityName, zip, stateName, userLat, userLng), 5000),
-    fetchWithTimeout(fetchSerpAPIAroundCoords(cityName, zip, stateName, userLat, userLng), 4000),
   ]);
 
   if (tmRes.status === "fulfilled") { 
@@ -212,8 +211,6 @@ export default async function handler(req, res) {
   if (usdaRes.status === "fulfilled") results.events.push(...usdaRes.value);
   else results.errors.push("USDA: " + usdaRes.reason?.message);
 
-  if (coordRes.status === "fulfilled") results.events.push(...coordRes.value);
-  else results.errors.push("SerpCoords: " + coordRes.reason?.message);
 
   // Deduplicate by name
   const seen = new Set();
