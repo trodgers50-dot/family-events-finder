@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
-<meta name="bf-build" content="standout-v1-when">
+<meta name="bf-build" content="open-now-v1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -80,7 +80,15 @@ input,textarea,select{font-family:inherit;}
 .meta-chip.rating{background:rgba(251,191,36,0.12);color:#fbbf24;}
 .meta-chip.dist{background:rgba(99,162,255,0.12);color:#93c5fd;}
 .meta-chip.hours{background:rgba(110,231,183,0.1);color:#6ee7b7;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+.meta-chip.open-now{background:rgba(16,185,129,0.18);color:#6ee7b7;border:1px solid rgba(16,185,129,0.28);}
+.meta-chip.closed-now{background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.38);border:1px solid rgba(255,255,255,0.06);}
 .meta-chip.type{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.85)}
+.open-badge{position:absolute;top:10px;left:10px;z-index:3;font-size:10px;font-weight:750;letter-spacing:0.3px;padding:5px 10px;border-radius:999px;backdrop-filter:blur(10px);border:1px solid transparent;pointer-events:none;}
+.open-badge.on{background:rgba(16,185,129,0.78);color:#ecfdf5;border-color:rgba(110,231,183,0.45);box-shadow:0 2px 10px rgba(16,185,129,0.35);}
+.open-badge.off{background:rgba(0,0,0,0.55);color:rgba(255,255,255,0.55);border-color:rgba(255,255,255,0.1);}
+.open-now-chip{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;font-size:12px;font-weight:650;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.5);min-height:36px;user-select:none;transition:background .15s,color .15s,border-color .15s;}
+.open-now-chip.on{background:rgba(16,185,129,0.2);color:#6ee7b7;border-color:rgba(16,185,129,0.4);box-shadow:0 2px 12px rgba(16,185,129,0.2);}
+.open-now-chip .count{font-size:10px;font-weight:700;opacity:0.75;padding:1px 6px;border-radius:999px;background:rgba(0,0,0,0.25);}
 .meta-quiet{font-size:12px;color:rgba(255,255,255,0.42);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
 .type-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.9px;}
 .detail-panel{padding:4px 14px 18px;animation:fadeIn .22s ease;}
@@ -3367,6 +3375,13 @@ function parseOpenNow(hoursStr){
   return null;
 }
 
+/** Prefer API openNow boolean; else parse hours string. */
+function placeIsOpen(ev){
+  if(!ev) return null;
+  if(typeof ev.openNow==="boolean") return ev.openNow;
+  return parseOpenNow(ev.hours);
+}
+
 function parseEventStartMs(item){
   const ds=item.startDate||item.date;
   if(!ds) return null;
@@ -3421,7 +3436,7 @@ function buildPlanReason(item, mode){
   const dist=itemDistanceMiles(item);
   const dl=distLabelShort(dist);
   if(item.kind==="place"){
-    const open=parseOpenNow(item.hours);
+    const open=placeIsOpen(item);
     if(dl) bits.push(dl);
     if(open===true) bits.push("open now");
     else if(item.hours && /open/i.test(item.hours) && bits.length<2) bits.push(String(item.hours).split(/[·|]/)[0].trim().slice(0,18));
@@ -3473,9 +3488,9 @@ function scorePlanItem(item, mode){
       if(TONIGHT_PLACE_TYPES.has(type)) score += type==="Nightlife"?42:type==="Brewery"?34:type==="Music"?30:26;
       else if(type==="Arts"||type==="Outdoor") score += 6;
       else score -= 4;
-      const open=parseOpenNow(item.hours);
-      if(open===true) score += 28;
-      else if(open===false) score -= 18; // closed now — soft penalty
+      const open=placeIsOpen(item);
+      if(open===true) score += 34;
+      else if(open===false) score -= 22; // closed now — soft penalty
       // Late-night bias after 5pm
       if(now.hour>=17 && (type==="Nightlife"||type==="Brewery"||type==="Music")) score += 10;
       if(item.rating!=null) score += Math.min(8, (+item.rating-3.5)*6);
@@ -3682,6 +3697,7 @@ let state={
   planItems:[],planLoading:false,planLens:"all",
   savedPlan:[],planSheetOpen:false,sharedPlan:null,sharedSheetOpen:false,
   filtersOpen:false,
+  openNowOnly:false,
 };
 
 function setState(u){Object.assign(state,u);render();}
@@ -4999,6 +5015,7 @@ const filtered=sourceList.filter(ev=>{
       const hay=((ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||ev.desc||"")+" "+(ev.type||"")+" "+(ev.hours||"")+" "+(ev.reason||"")).toLowerCase();
       if(!hay.includes(q)) return false;
     }
+    if(isPlaces && state.openNowOnly && placeIsOpen(ev)!==true) return false;
     return true;
   }).sort((a,b)=>{
     if(isPlan){
@@ -5009,6 +5026,10 @@ const filtered=sourceList.filter(ev=>{
       return (b.score||0)-(a.score||0);
     }
     if(isPlaces){
+      // Open now first, then distance bands, then rating
+      const oa=placeIsOpen(a)===true?0:placeIsOpen(a)===false?2:1;
+      const ob=placeIsOpen(b)===true?0:placeIsOpen(b)===false?2:1;
+      if(oa!==ob) return oa-ob;
       const distA = (state.userLat&&state.userLng&&a.lat&&a.lng)
         ? haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
         : (a.distanceMiles!=null?a.distanceMiles:null);
@@ -5058,6 +5079,8 @@ const filtered=sourceList.filter(ev=>{
   const weekendCount=isPlaces||isPlan?0:filtered.filter(e=>e.isWeekend).length;
   const selectedRange=DATE_RANGES.find(d=>d.id===state.dateRange);
   const ratedCount=isPlaces?filtered.filter(e=>e.rating!=null).length:0;
+  const openNowCount=isPlaces?filtered.filter(e=>placeIsOpen(e)===true).length:0;
+  const openNowSourceCount=isPlaces?sourceList.filter(e=>placeIsOpen(e)===true).length:0;
   const planLabel=state.feedMode==="tonight"?"Tonight":"This weekend";
 
   const loadingNow=isPlan
@@ -5151,9 +5174,19 @@ const filtered=sourceList.filter(ev=>{
   const planEvents=isPlan?filtered.filter(e=>e.kind!=="place").sort((a,b)=>(b.score||0)-(a.score||0)):[];
   const planPlaces=isPlan?filtered.filter(e=>e.kind==="place").sort((a,b)=>(b.score||0)-(a.score||0)):[];
   const planLens=state.planLens||"all";
-  const displayList=isPlan
+  let displayList=isPlan
     ? (planLens==="events"?planEvents:planLens==="places"?planPlaces:[...planEvents,...planPlaces])
-    : filtered;
+    : filtered.slice();
+  // Places feed: prefer an open place as the featured hero
+  if(isPlaces && displayList.length>1){
+    if(placeIsOpen(displayList[0])!==true){
+      const openIdx=displayList.findIndex(e=>placeIsOpen(e)===true);
+      if(openIdx>0){
+        const [openItem]=displayList.splice(openIdx,1);
+        displayList.unshift(openItem);
+      }
+    }
+  }
   const cards=displayList.map((ev,idx)=>{
     const meta=m2(ev.type);
     const isOpen=state.openId===ev.id;
@@ -5177,8 +5210,19 @@ const filtered=sourceList.filter(ev=>{
     const photoUrl=(ev.photo&&String(ev.photo).trim())||getPhoto(ev.type,ev.id);
     const isFeatured=idx===0;
     const inPlan=isInSavedPlan(ev.id);
+    const openStatus=isPlace?placeIsOpen(ev):null;
+    const openChip=isPlace?(openStatus===true
+      ?`<span class="meta-chip open-now">Open now</span>`
+      :openStatus===false
+      ?`<span class="meta-chip closed-now">Closed</span>`
+      :(ev.hours?`<span class="meta-chip hours">${san(String(ev.hours).split(/[·|\n]/)[0].trim().slice(0,28))}</span>`:"")
+    ):"";
+    const openOverlay=isPlace&&openStatus!=null
+      ?`<div class="open-badge ${openStatus?"on":"off"}">${openStatus?"Open now":"Closed"}</div>`
+      :"";
     const metaChips=`
             ${isPlan&&ev.reason?`<span class="meta-chip reason">${san(ev.reason)}</span>`:""}
+            ${openChip}
             <span class="meta-chip type" style="color:${meta.color}">${san(ev.type|| (isPlace?"Place":"Event"))}</span>
             ${isPlan?`<span class="meta-chip" style="background:${isPlace?"rgba(236,72,153,0.12)":"rgba(99,102,241,0.14)"};color:${isPlace?"#f9a8d4":"#c7d2fe"}">${isPlace?"Place":"Event"}</span>`:""}
             ${!isPlan?(isPlace
@@ -5187,7 +5231,7 @@ const filtered=sourceList.filter(ev=>{
             ):""}
             ${!isPlan&&distLabel?`<span class="meta-chip dist">${distLabel}</span>`:""}
             ${ev.cost==="Free"||ev.cost==="free"?`<span class="meta-chip" style="background:rgba(16,185,129,0.12);color:#6ee7b7">Free</span>`:""}
-            ${!isPlan&&isPlace&&ev.hours?`<span class="meta-chip hours">${san(ev.hours)}</span>`:""}
+            ${!isPlan&&isPlace&&ev.hours&&openStatus==null?`<span class="meta-chip hours">${san(ev.hours)}</span>`:""}
             ${count>0?`<span class="meta-chip" style="background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.55)">👥 ${count}</span>`:""}
     `;
     const actionBtns=`
@@ -5199,6 +5243,7 @@ const filtered=sourceList.filter(ev=>{
         <div class="media-hero">
           <img class="media-hero-img" src="${photoUrl}" alt="" loading="lazy" onerror="this.style.opacity='0.15'"/>
           <div class="media-hero-grad"></div>
+          ${openOverlay}
           <div class="media-actions">${actionBtns}</div>
           <div class="media-hero-body">
             <div class="card-meta-row">${metaChips}</div>
@@ -5211,6 +5256,7 @@ const filtered=sourceList.filter(ev=>{
         <div class="media-cover">
           <img class="media-cover-img" src="${photoUrl}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex')"/>
           <div class="media-cover-fallback" style="display:none;background:linear-gradient(145deg,${meta.color}40,${meta.color}12)">${meta.icon}</div>
+          ${openOverlay}
           <div class="media-actions">${actionBtns}</div>
         </div>
         <div class="media-body">
@@ -5323,7 +5369,7 @@ const filtered=sourceList.filter(ev=>{
           <div class="results-sub">${isPlan
             ? `${filtered.length} ${planLabel.toLowerCase()} picks`
             : isPlaces
-            ? `${filtered.length} places${ratedCount?` · ${ratedCount} rated`:""}`
+            ? `${filtered.length} places${openNowCount?` · ${openNowCount} open`:""}${ratedCount?` · ${ratedCount} rated`:""}`
             : `${filtered.length} events · ${selectedRange?.label}`
           }</div>
         </div>
@@ -5364,7 +5410,16 @@ const filtered=sourceList.filter(ev=>{
           }).join("")}
         </div>
       </div>`:""}
-      <div id="filters-toggle" class="filters-toggle${state.filtersOpen?" open":""}">⚙ Filters ${state.typeFilter!=="All"||state.whoFilter!=="all"||state.freeOnly||(!isPlan&&!isPlaces&&state.dateRange!=="3months")?"· on":""}${!isPlan&&!isPlaces?` · ${selectedRange?.label||"3 Months"}`:""} ${state.filtersOpen?"▴":"▾"}</div>
+      ${isPlaces?`<div class="when-row" style="margin-bottom:10px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px;padding-left:2px">Open</div>
+        <div class="chip-row" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <div id="open-now-toggle" class="open-now-chip${state.openNowOnly?" on":""}" role="button" aria-pressed="${state.openNowOnly?"true":"false"}">
+            <span style="width:7px;height:7px;border-radius:50%;background:${state.openNowOnly?"#6ee7b7":"rgba(255,255,255,0.25)"};box-shadow:${state.openNowOnly?"0 0 8px #6ee7b7":"none"}"></span>
+            Open now${openNowSourceCount?` <span class="count">${openNowSourceCount}</span>`:""}
+          </div>
+        </div>
+      </div>`:""}
+      <div id="filters-toggle" class="filters-toggle${state.filtersOpen?" open":""}">⚙ Filters ${state.typeFilter!=="All"||state.whoFilter!=="all"||state.freeOnly||state.openNowOnly||(!isPlan&&!isPlaces&&state.dateRange!=="3months")?"· on":""}${!isPlan&&!isPlaces?` · ${selectedRange?.label||"3 Months"}`:""} ${state.filtersOpen?"▴":"▾"}</div>
       ${state.filtersOpen?`<div class="filters-panel filters-quiet">
         <div class="chip-row" style="display:flex;gap:5px;flex-wrap:nowrap;min-width:max-content;padding-bottom:2px;margin-bottom:8px">
           ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 11px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.14)":"transparent"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.32)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.28)":"rgba(255,255,255,0.04)"};display:flex;align-items:center;gap:4px;flex-shrink:0;white-space:nowrap">${w.icon} ${w.label}</div>`).join("")}
@@ -5393,11 +5448,11 @@ const filtered=sourceList.filter(ev=>{
         <div class="empty-icon">${isPlan?(state.feedMode==="tonight"?"🌙":"📅"):(isPlaces?"🍸":"🎟️")}</div>
         <h3>${isPlan
           ? (sourceList.length===0?`Nothing buzzing here yet`:"Nothing matches those filters")
-          : isPlaces?(state.placesError?"Couldn't load places":"Nothing buzzing here yet"):(sourceList.length===0?"Nothing buzzing here yet":"Nothing matches those filters")}</h3>
+          : isPlaces?(state.placesError?"Couldn't load places":(state.openNowOnly?"Nothing open right now":"Nothing buzzing here yet")):(sourceList.length===0?"Nothing buzzing here yet":"Nothing matches those filters")}</h3>
         <p>${isPlan
           ? (sourceList.length===0?`Try Things to do or widen the city — the night's still waking up.`:"Loosen filters or switch lanes — the night's bigger than this list.")
           : isPlaces
-          ?(state.placesError?"Try again in a moment, or search a nearby city.":"Try Things to do or widen the city — or switch to Events.")
+          ?(state.placesError?"Try again in a moment, or search a nearby city.":(state.openNowOnly?"Nothing open right now — turn off Open now or try another city.":"Try Things to do or widen the city — or switch to Events."))
           :(sourceList.length===0
             ?"Try Things to do or widen the city — sparse nights happen."
             :"Clear filters or pick a wider date range to see more.")}</p>
@@ -5828,7 +5883,9 @@ function bindEvents(){
   document.querySelectorAll(".who-filter").forEach(el=>el.addEventListener("click",()=>{state.whoFilter=el.dataset.who;render();}));
   document.querySelectorAll(".range-filter").forEach(el=>el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();}));
   document.querySelectorAll(".toggle-free").forEach(el=>el.addEventListener("click",()=>{state.freeOnly=!state.freeOnly;render();}));
-  document.querySelectorAll(".clear-all").forEach(el=>el.addEventListener("click",()=>{state.typeFilter="All";state.whoFilter="all";state.freeOnly=false;state.dateRange="3months";render();}));
+  const openNowToggle=document.getElementById("open-now-toggle");
+  if(openNowToggle)openNowToggle.addEventListener("click",()=>{state.openNowOnly=!state.openNowOnly;render();});
+  document.querySelectorAll(".clear-all").forEach(el=>el.addEventListener("click",()=>{state.typeFilter="All";state.whoFilter="all";state.freeOnly=false;state.openNowOnly=false;state.dateRange="3months";render();}));
   document.querySelectorAll(".cal-btn").forEach(el=>el.addEventListener("click",()=>{const d=(el.dataset.date||"").replace(/-/g,"");if(d)window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${el.dataset.name}&dates=${d}/${d}&location=${el.dataset.addr}`,"_blank");}));
   document.querySelectorAll(".share-btn").forEach(el=>el.addEventListener("click",()=>{
     const name=decodeURIComponent(el.dataset.name);

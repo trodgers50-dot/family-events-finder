@@ -141,6 +141,16 @@ function formatHours(p) {
   return "";
 }
 
+/** true | false | null from SerpAPI open_state / hours string */
+function deriveOpenNow(p) {
+  const raw = p.open_state || formatHours(p);
+  if (!raw || typeof raw !== "string") return null;
+  const h = raw.toLowerCase();
+  if (/closed/.test(h)) return false;
+  if (/open/.test(h)) return true;
+  return null;
+}
+
 function mapLocalResult(p, i, zip, queryHint) {
   const name = p.title || p.name || "Local place";
   const types = p.types || (p.type ? [p.type] : []);
@@ -161,6 +171,7 @@ function mapLocalResult(p, i, zip, queryHint) {
     reviews: p.reviews != null ? p.reviews : null,
     price: p.price || null,
     hours: formatHours(p),
+    openNow: deriveOpenNow(p),
     url: p.website || p.website_link || (p.links && p.links.website) || p.link || "",
     phone: p.phone || "",
     lat,
@@ -256,7 +267,7 @@ export default async function handler(req, res) {
   const coordKey = hasCoords
     ? `_${Math.round(userLat * 10) / 10}_${Math.round(userLng * 10) / 10}`
     : "";
-  const cacheKey = `places_v3_${zip || "coords"}${coordKey}`;
+  const cacheKey = `places_v4_${zip || "coords"}${coordKey}`;
   const cached = await getCached(cacheKey);
   if (cached) {
     let places = Array.isArray(cached) ? cached : [];
