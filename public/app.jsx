@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+// NOTE: public/index.html is the canonical production UI. This app.jsx is an older prototype — prefer editing index.html.
+
 // ── Photo map by event type (Unsplash curated IDs) ───────────────────────────
 const TYPE_PHOTOS = {
   Festival: [
