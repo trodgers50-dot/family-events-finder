@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
-<meta name="bf-build" content="plan-sections-v3">
+<meta name="bf-build" content="events-ticketed-v1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -3460,6 +3460,25 @@ function scorePlanItem(item, mode){
   return score;
 }
 
+
+// Events lane = ticketed / dated shows. Bars & nightlife venues → Things to do.
+function isPlanTicketedEvent(ev){
+  if(!ev) return false;
+  const name=String(ev.name||"");
+  const blob=(name+" "+(ev.description||ev.desc||"")+" "+(ev.type||"")+" "+(ev.cost||"")+" "+(ev.source||"")).toLowerCase();
+  if(/— nightlife\s*$|— events\s*$/i.test(name)) return false;
+  if((ev.source||"")==="Google Maps") return false;
+  const venueOnly=/happy hour|bar crawl|rooftop bar|sports bar|wine bar|cocktail bar|nightclub|dive bar/.test(blob);
+  const showSignal=/concert|ticket|showtimes?|\bshow\b|festival|tourtime|doors|presale|box office|comedy show|stand-?up|symphony|theater|theatre|opera|ballet|tour|game|match/.test(blob);
+  if((ev.type==="Nightlife"||ev.type==="Brewery") && !showSignal) return false;
+  if(venueOnly && !showSignal) return false;
+  const trusted=/ticketmaster|eventbrite|predicthq/.test(blob);
+  const hasDate=!!(ev.startDate||ev.date);
+  if(trusted) return true;
+  if(hasDate && (showSignal || ["Music","Festival","Sports","Arts","Kids","Market","Community","Food","Outdoor"].includes(ev.type))) return true;
+  return false;
+}
+
 function buildPlanFeed(events, places, mode){
   const merged=[];
   (places||[]).forEach(p=>{
@@ -3473,6 +3492,7 @@ function buildPlanFeed(events, places, mode){
     merged.push({...item, score, reason:buildPlanReason(item, mode)});
   });
   (events||[]).forEach(ev=>{
+    if(!isPlanTicketedEvent(ev)) return; // bars/nightlife venues stay in Things to do
     const item={...ev, kind:"event"};
     const score=scorePlanItem(item, mode);
     if(mode==="tonight"){
@@ -4639,7 +4659,7 @@ function renderHome(){
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${DATE_RANGES.map(d=>`<div class="range-btn" data-range="${d.id}" style="padding:6px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.35)":"rgba(255,255,255,0.06)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer">${d.label}</div>`).join("")}
         </div>
-      </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Tonight split into <strong style="color:#fcd34d;font-weight:650">Events</strong> and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> — closer, open, free when it fits.</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Weekend plan with <strong style="color:#a5b4fc;font-weight:650">Events</strong> and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> in separate sections. One tap — stop scrolling.</div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
+      </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Tonight: <strong style="color:#fcd34d;font-weight:650">Events</strong> (concerts & ticketed shows) and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> (bars & nightlife, spots nearby).</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Weekend: <strong style="color:#a5b4fc;font-weight:650">Events</strong> you buy tickets for, then <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> — bars, nightlife, and local spots.</div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
 
 
 
@@ -4651,7 +4671,7 @@ function renderHome(){
 function renderResults(){
   const isPlan=state.feedMode==="tonight"||state.feedMode==="weekend";
   const isPlaces=state.feedMode==="places";
-  const sourceList=isPlan?state.planItems:(isPlaces?state.places:state.events);
+  const sourceList=isPlan?state.planItems:(isPlaces?state.places:state.events.filter(isPlanTicketedEvent));
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
 const filtered=sourceList.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
@@ -5021,7 +5041,7 @@ const filtered=sourceList.filter(ev=>{
         <span style="font-size:18px">${state.feedMode==="tonight"?"🌙":"📅"}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:650;color:#f8fafc">${planLabel} in ${state.info?.city||state.zip}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">Events first, then Things to do — separate sections</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">Events = ticketed shows · Things to do = bars, spots & experiences</div>
         </div>
       </div>`:""}
       <div style="margin-bottom:12px">
