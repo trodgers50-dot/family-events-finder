@@ -38,6 +38,18 @@ input,textarea,select{font-family:inherit;}
 .seg.compact{border-radius:11px;padding:2px;}
 .seg.compact .seg-btn{padding:5px 12px;font-size:11px;min-height:32px;border-radius:9px;}
 
+/* Tonight / This weekend plan CTA */
+.plan-cta{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
+.plan-cta-label{font-size:10px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:1.1px;text-align:center;font-weight:600;}
+.plan-seg{display:flex;padding:4px;background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(236,72,153,0.08));border-radius:16px;border:1px solid rgba(245,158,11,0.22);gap:4px;box-shadow:0 4px 24px rgba(245,158,11,0.08);}
+.plan-btn{flex:1;padding:14px 12px;font-size:14px;font-weight:700;cursor:pointer;border-radius:12px;color:rgba(255,255,255,0.55);transition:background .18s,color .18s,box-shadow .18s;user-select:none;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;letter-spacing:-0.2px;}
+.plan-btn:hover{color:rgba(255,255,255,0.88);background:rgba(255,255,255,0.04);}
+.plan-btn .plan-sub{font-size:10px;font-weight:500;opacity:0.7;letter-spacing:0.2px;}
+.plan-btn.active-tonight{background:linear-gradient(135deg,rgba(245,158,11,0.65),rgba(236,72,153,0.5));color:#fff;box-shadow:0 4px 18px rgba(245,158,11,0.35);}
+.plan-btn.active-weekend{background:linear-gradient(135deg,rgba(99,102,241,0.6),rgba(139,92,246,0.48));color:#e0e7ff;box-shadow:0 4px 18px rgba(99,102,241,0.32);}
+.meta-chip.reason{background:rgba(245,158,11,0.12);color:#fcd34d;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+.plan-banner{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;margin-bottom:14px;background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(236,72,153,0.08));border:1px solid rgba(245,158,11,0.2);}
+
 /* Result cards */
 .buzz-card{border-radius:18px;overflow:hidden;background:transparent;border:1px solid transparent;margin-bottom:0;transition:background .2s,border-color .2s,box-shadow .2s;}
 .buzz-card.open{background:rgba(255,255,255,0.035);border-color:rgba(255,255,255,0.09);margin-bottom:10px;box-shadow:0 10px 32px rgba(0,0,0,0.38);}
@@ -3199,6 +3211,317 @@ function isThisWeekendOrSooner(ds){
   const ev=new Date(ds+"T00:00:00");
   return ev>=today && ev<=cutoff;
 }
+
+// ── Tonight / This weekend plan ranking ───────────────────────────────────────
+const PLAN_LIMIT=12;
+const TONIGHT_PLACE_TYPES=new Set(["Nightlife","Brewery","Food","Music"]);
+const WEEKEND_PLACE_TYPES=new Set(["Outdoor","Kids","Arts","Nightlife","Brewery","Food","Music","Family","Market"]);
+const TONIGHT_EVENT_TYPES=new Set(["Music","Nightlife","Comedy","Brewery","Food","Festival"]);
+const WEEKEND_EVENT_TYPES=new Set(["Music","Nightlife","Comedy","Festival","Outdoor","Kids","Arts","Family","Market","Community","Food","Brewery","Sports"]);
+
+function nowInUserTZ(){
+  // Prefer America/New_York wall clock for plan decisions (product TZ).
+  try{
+    const parts=new Intl.DateTimeFormat("en-US",{
+      timeZone:"America/New_York",
+      year:"numeric",month:"2-digit",day:"2-digit",
+      hour:"2-digit",minute:"2-digit",hour12:false,weekday:"short"
+    }).formatToParts(new Date());
+    const get=t=>(parts.find(p=>p.type===t)||{}).value;
+    const y=+get("year"), mo=+get("month"), d=+get("day");
+    let h=+get("hour"); if(h===24) h=0;
+    const mi=+get("minute");
+    const wd=get("weekday");
+    const dowMap={Sun:0,Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6};
+    return {date:`${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`, hour:h, minute:mi, dow:dowMap[wd]??new Date().getDay(), ms:Date.now()};
+  }catch(e){
+    const n=new Date();
+    return {date:n.toISOString().slice(0,10), hour:n.getHours(), minute:n.getMinutes(), dow:n.getDay(), ms:Date.now()};
+  }
+}
+
+function itemDistanceMiles(item){
+  if(item.distanceMiles!=null && !isNaN(item.distanceMiles)) return +item.distanceMiles;
+  if(state.userLat!=null && state.userLng!=null && item.lat!=null && item.lng!=null){
+    try{ return Math.round(haversine(state.userLat,state.userLng,parseFloat(item.lat),parseFloat(item.lng))*10)/10; }
+    catch(e){ return null; }
+  }
+  return null;
+}
+
+function isLikelyFree(item){
+  const c=String(item.cost||item.price||"").toLowerCase();
+  if(!c) return false;
+  return c==="free"||c.includes("free")||c==="$0"||c==="0";
+}
+
+/** Best-effort open-now from SerpAPI-ish hours strings. null = unknown. */
+function parseOpenNow(hoursStr){
+  if(!hoursStr || typeof hoursStr!=="string") return null;
+  const h=hoursStr.toLowerCase().trim();
+  if(/open\s*24|24\s*hours|24\/7/.test(h)) return true;
+  // "Closed · Opens 5 PM" means closed right now (opens later)
+  if(/closed\s*·|temporarily closed|(^|\b)closed\b/.test(h)) return false;
+  if(/^open\b|open\s*·|open now/.test(h)) return true;
+  // "Closes 11 PM" / "Open until 2 AM" imply currently open
+  if(/closes\s+\d|open until|open til/.test(h) && !/closed/.test(h)) return true;
+  // Try today's named range: "Monday: 5:00 PM – 11:00 PM"
+  try{
+    const now=nowInUserTZ();
+    const dayNames=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+    const day=dayNames[now.dow];
+    const dayLine=(h.split(/\n|;|\|/).map(s=>s.trim()).find(s=>s.startsWith(day))||"");
+    const range=dayLine || h;
+    const m=range.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*[–\-to]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    if(m){
+      const toMin=(hh,mm,ap,fallbackAp)=>{
+        let H=parseInt(hh,10); const M=parseInt(mm||"0",10);
+        const a=(ap||fallbackAp||"").toLowerCase();
+        if(a==="pm" && H<12) H+=12;
+        if(a==="am" && H===12) H=0;
+        if(!a && H<=7) H+=12; // bare "5-11" evening guess
+        return H*60+M;
+      };
+      const start=toMin(m[1],m[2],m[3],m[6]);
+      let end=toMin(m[4],m[5],m[6],m[3]);
+      if(end<=start) end+=24*60; // crosses midnight
+      const cur=now.hour*60+now.minute;
+      const cur2=cur+24*60;
+      return (cur>=start && cur<=end) || (cur2>=start && cur2<=end);
+    }
+  }catch(e){}
+  return null;
+}
+
+function parseEventStartMs(item){
+  const ds=item.startDate||item.date;
+  if(!ds) return null;
+  // Optional time from sched[0] like "7:00 PM · Doors"
+  let hour=19, minute=0;
+  const sched0=(item.sched&&item.sched[0])||item.time||"";
+  const tm=String(sched0).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+  if(tm){
+    hour=parseInt(tm[1],10); minute=parseInt(tm[2]||"0",10);
+    const ap=tm[3].toLowerCase();
+    if(ap==="pm"&&hour<12) hour+=12;
+    if(ap==="am"&&hour===12) hour=0;
+  } else if(item.startTime){
+    const t2=String(item.startTime).match(/(\d{1,2}):(\d{2})/);
+    if(t2){ hour=+t2[1]; minute=+t2[2]; }
+  }
+  try{
+    // Interpret as America/New_York civil time roughly via Date with offset guess
+    const iso=`${ds}T${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}:00`;
+    const d=new Date(iso);
+    if(isNaN(d.getTime())) return null;
+    return d.getTime();
+  }catch(e){ return null; }
+}
+
+function formatShortWhen(item){
+  const ds=item.startDate||item.date;
+  if(!ds) return "";
+  try{
+    const dt=new Date(ds+"T00:00:00");
+    const now=nowInUserTZ();
+    const today=new Date(now.date+"T00:00:00");
+    const diff=Math.round((dt-today)/86400000);
+    const sched0=(item.sched&&item.sched[0])||"";
+    const tm=String(sched0).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
+    const timeBit=tm?`${tm[1]}${tm[2]?":"+tm[2]:""}${tm[3].toLowerCase()}`:"";
+    if(diff===0) return timeBit?`Tonight ${timeBit}`:"Tonight";
+    if(diff===1) return timeBit?`Tomorrow ${timeBit}`:"Tomorrow";
+    const wd=dt.toLocaleDateString("en-US",{weekday:"short"});
+    return timeBit?`${wd} ${timeBit}`:wd;
+  }catch(e){ return formatDate(ds); }
+}
+
+function distLabelShort(mi){
+  if(mi==null || isNaN(mi)) return "";
+  if(mi<1) return "<1 mi";
+  return (Math.round(mi*10)/10)+" mi";
+}
+
+function buildPlanReason(item, mode){
+  const bits=[];
+  const dist=itemDistanceMiles(item);
+  const dl=distLabelShort(dist);
+  if(item.kind==="place"){
+    const open=parseOpenNow(item.hours);
+    if(dl) bits.push(dl);
+    if(open===true) bits.push("open now");
+    else if(item.hours && /open/i.test(item.hours) && bits.length<2) bits.push(String(item.hours).split(/[·|]/)[0].trim().slice(0,18));
+    if(isLikelyFree(item)) bits.push("free");
+    if(bits.length<2 && item.type) bits.push(item.type);
+  } else {
+    const when=formatShortWhen(item);
+    if(when) bits.push(when);
+    if(dl) bits.push(dl);
+    if(isLikelyFree(item)) bits.push("free");
+    if(bits.length<2 && item.type) bits.push(item.type);
+  }
+  return bits.slice(0,3).join(" · ") || (mode==="tonight"?"Tonight pick":"Weekend pick");
+}
+
+function scorePlanItem(item, mode){
+  const kind=item.kind==="place"?"place":"event";
+  const type=item.type||"";
+  const dist=itemDistanceMiles(item);
+  let score=20;
+  const now=nowInUserTZ();
+
+  // Distance — Tonight tighter than weekend
+  if(dist!=null){
+    if(mode==="tonight"){
+      if(dist>40) score-=50;
+      else if(dist>25) score-=25;
+      else if(dist>15) score-=10;
+      else if(dist<=3) score+=35;
+      else if(dist<=8) score+=25;
+      else if(dist<=15) score+=12;
+      score -= dist*1.8;
+    } else {
+      if(dist>60) score-=35;
+      else if(dist>40) score-=12;
+      else if(dist<=5) score+=28;
+      else if(dist<=15) score+=18;
+      else if(dist<=30) score+=8;
+      score -= dist*1.1;
+    }
+  } else {
+    score -= 4; // unknown distance: mild uncertainty, don't punish hard
+  }
+
+  if(isLikelyFree(item)) score += (mode==="tonight"?18:14);
+
+  if(kind==="place"){
+    if(mode==="tonight"){
+      if(TONIGHT_PLACE_TYPES.has(type)) score += type==="Nightlife"?42:type==="Brewery"?34:type==="Music"?30:26;
+      else if(type==="Arts"||type==="Outdoor") score += 6;
+      else score -= 4;
+      const open=parseOpenNow(item.hours);
+      if(open===true) score += 28;
+      else if(open===false) score -= 18; // closed now — soft penalty
+      // Late-night bias after 5pm
+      if(now.hour>=17 && (type==="Nightlife"||type==="Brewery"||type==="Music")) score += 10;
+      if(item.rating!=null) score += Math.min(8, (+item.rating-3.5)*6);
+    } else {
+      if(WEEKEND_PLACE_TYPES.has(type)) score += type==="Outdoor"?32:type==="Kids"?28:type==="Arts"?26:22;
+      else score += 4;
+      if(item.rating!=null) score += Math.min(10, (+item.rating-3.5)*7);
+    }
+  } else {
+    const ds=item.startDate||item.date;
+    let dayDiff=null;
+    if(ds){
+      try{
+        const ev=new Date(ds+"T00:00:00");
+        const today=new Date(now.date+"T00:00:00");
+        dayDiff=Math.round((ev-today)/86400000);
+      }catch(e){}
+    }
+    const startMs=parseEventStartMs(item);
+    const hoursUntil=startMs!=null?((startMs-now.ms)/3600000):null;
+
+    if(mode==="tonight"){
+      // Prefer today or next ~12 hours
+      let timeOk=false;
+      if(dayDiff===0){ timeOk=true; score += 48; }
+      else if(hoursUntil!=null && hoursUntil>=-2 && hoursUntil<=12){ timeOk=true; score += 44; }
+      else if(dayDiff===1 && now.hour>=18){ timeOk=true; score += 18; } // late tonight → tomorrow early fringe
+      else { score -= 60; }
+      if(TONIGHT_EVENT_TYPES.has(type) || /comedy|music|nightlife|bar|concert/i.test(type+" "+(item.name||""))) score += 28;
+      else if(type==="Festival"||type==="Food") score += 12;
+      if(hoursUntil!=null && hoursUntil>=0 && hoursUntil<=4) score += 12; // starting soon
+      if(!timeOk && dayDiff!=null && dayDiff>1) score -= 20;
+    } else {
+      // Weekend: Sat/Sun (or Fri evening) within next 7–10 days
+      let weekendOk=false;
+      if(ds){
+        try{
+          const ev=new Date(ds+"T00:00:00");
+          const dow=ev.getDay();
+          if(dayDiff!=null && dayDiff>=0 && dayDiff<=10){
+            if(dow===0||dow===6){ weekendOk=true; score += 42; }
+            else if(dow===5){ weekendOk=true; score += 28; } // Friday
+            else if(dayDiff<=2){ weekendOk=true; score += 10; }
+          }
+        }catch(e){}
+      } else {
+        score -= 8;
+      }
+      if(!weekendOk) score -= 45;
+      if(WEEKEND_EVENT_TYPES.has(type)) score += 16;
+      if(dayDiff===0||dayDiff===1) score += 8;
+    }
+  }
+
+  return score;
+}
+
+function buildPlanFeed(events, places, mode){
+  const merged=[];
+  (places||[]).forEach(p=>{
+    const item={...p, kind:"place"};
+    const score=scorePlanItem(item, mode);
+    if(mode==="tonight"){
+      const dist=itemDistanceMiles(item);
+      if(dist!=null && dist>45) return; // hard drop far junk tonight
+    }
+    if(score < -20) return;
+    merged.push({...item, score, reason:buildPlanReason(item, mode)});
+  });
+  (events||[]).forEach(ev=>{
+    const item={...ev, kind:"event"};
+    const score=scorePlanItem(item, mode);
+    if(mode==="tonight"){
+      const dist=itemDistanceMiles(item);
+      if(dist!=null && dist>40) return;
+      const ds=item.startDate||item.date;
+      const now=nowInUserTZ();
+      if(ds){
+        try{
+          const dayDiff=Math.round((new Date(ds+"T00:00:00")-new Date(now.date+"T00:00:00"))/86400000);
+          const startMs=parseEventStartMs(item);
+          const hoursUntil=startMs!=null?((startMs-now.ms)/3600000):null;
+          const soon=(dayDiff===0) || (hoursUntil!=null && hoursUntil>=-2 && hoursUntil<=14) || (dayDiff===1 && now.hour>=20);
+          if(!soon) return;
+        }catch(e){}
+      }
+    } else {
+      const ds=item.startDate||item.date;
+      if(ds){
+        try{
+          const now=nowInUserTZ();
+          const dayDiff=Math.round((new Date(ds+"T00:00:00")-new Date(now.date+"T00:00:00"))/86400000);
+          const dow=new Date(ds+"T00:00:00").getDay();
+          if(dayDiff<0 || dayDiff>10) return;
+          if(!(dow===0||dow===5||dow===6 || dayDiff<=1)) return;
+        }catch(e){}
+      }
+    }
+    if(score < -25) return;
+    merged.push({...item, score, reason:buildPlanReason(item, mode)});
+  });
+  merged.sort((a,b)=>b.score-a.score);
+  // Diversify a bit: avoid 10 of the same type dominating
+  const typeCounts={};
+  const diversified=[];
+  for(const it of merged){
+    const t=(it.kind||"")+"|"+(it.type||"");
+    typeCounts[t]=(typeCounts[t]||0)+1;
+    if(typeCounts[t]>4) continue;
+    diversified.push(it);
+    if(diversified.length>=PLAN_LIMIT) break;
+  }
+  return diversified;
+}
+
+function rebuildPlanFromState(){
+  if(state.feedMode!=="tonight" && state.feedMode!=="weekend") return;
+  const items=buildPlanFeed(state.events, state.places, state.feedMode);
+  state.planItems=items;
+}
 function getWeather(ds,r){
   const W={VA:[{i:"🌨",l:"38°",t:"Cold"},{i:"🌦",l:"52°",t:"Cool"},{i:"🌤",l:"62°",t:"Mild"},{i:"⛅",l:"70°",t:"Nice"},{i:"☀",l:"78°",t:"Warm"},{i:"🌡",l:"88°",t:"Hot"},{i:"🌡",l:"90°",t:"Hot"},{i:"🌡",l:"88°",t:"Hot"},{i:"☀",l:"80°",t:"Warm"},{i:"🌤",l:"68°",t:"Mild"},{i:"🌥",l:"56°",t:"Cool"},{i:"🌨",l:"44°",t:"Cold"}],DEFAULT:[{i:"❄",l:"32°",t:"Cold"},{i:"🌥",l:"42°",t:"Cold"},{i:"🌤",l:"55°",t:"Mild"},{i:"⛅",l:"65°",t:"Nice"},{i:"☀",l:"72°",t:"Warm"},{i:"🌡",l:"82°",t:"Hot"},{i:"🌡",l:"85°",t:"Hot"},{i:"🌡",l:"83°",t:"Hot"},{i:"☀",l:"75°",t:"Warm"},{i:"🌤",l:"63°",t:"Cool"},{i:"🌥",l:"50°",t:"Cool"},{i:"❄",l:"38°",t:"Cold"}]};
   const mo=new Date((ds||"2026-07-01")+"T00:00:00").getMonth();
@@ -3253,8 +3576,9 @@ let state={
   viewMode:"list",mapInstance:null,
   legalScreen:null,
   eventSearch:"",
-  feedMode:"events", // "events" | "places"
+  feedMode:"events", // "events" | "places" | "tonight" | "weekend"
   places:[],placesLoading:false,placesLive:false,placesFromCache:false,placesError:"",
+  planItems:[],planLoading:false,
 };
 
 function setState(u){Object.assign(state,u);render();}
@@ -3348,12 +3672,19 @@ async function doSearch(input,regionOverride){
   }
   setState({coordsLoading:false});
 
-  setState({loading:false,liveLoading:true,screen:"results",events:[],places:[],placesLoading:state.feedMode==="places",placesLive:false,placesFromCache:false,placesError:"",openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list"});
+  const planMode=state.feedMode==="tonight"||state.feedMode==="weekend";
+  setState({loading:false,liveLoading:true,screen:"results",events:[],places:[],placesLoading:state.feedMode==="places"||planMode,placesLive:false,placesFromCache:false,placesError:"",openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list",planItems:[],planLoading:planMode});
 
 
-  // Places feed (only when user is in Things to do mode — events path unchanged)
-  if(state.feedMode==="places"){
+  // Places feed: Things to do, or plan modes (Tonight / This weekend) need both feeds
+  const needsPlaces=state.feedMode==="places"||state.feedMode==="tonight"||state.feedMode==="weekend";
+  if(needsPlaces){
+    state.placesLoading=true;
     fetchPlaces(zip, info);
+  }
+  if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+    state.planLoading=true;
+    state.planItems=[];
   }
 
   // Phase 2 - live events
@@ -3451,12 +3782,26 @@ const merged=[...submittedEvents,...filteredLive];
 
       const fromCache=data.fromCache===true;
       setTimeout(()=>{
-        setState({events:deduped,loading:false,liveLoading:false,liveData:true,fromCache});
+        state.events=deduped;state.loading=false;state.liveLoading=false;state.liveData=true;state.fromCache=fromCache;
+        if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+          rebuildPlanFromState();
+          state.planLoading=state.placesLoading;
+        }
+        setState({});
       }, 400);
       loadAttendanceCounts(merged.map(e=>e.id));
-      showToast(fromCache?`⚡ ${liveEvents.length} events loaded instantly`:`✓ ${liveEvents.length} live events loaded`);
+      if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+        /* toast deferred until places also settle in fetchPlaces / rebuild */
+      } else {
+        showToast(fromCache?`⚡ ${liveEvents.length} events loaded instantly`:`✓ ${liveEvents.length} live events loaded`);
+      }
     }else{
-      setState({events:submittedEvents||[],loading:false,liveLoading:false,liveData:false});
+      state.events=submittedEvents||[];state.loading=false;state.liveLoading=false;state.liveData=false;
+      if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+        rebuildPlanFromState();
+        state.planLoading=state.placesLoading;
+      }
+      setState({});
       // Subtle hint: sparse towns often have places even when ticketed events are thin
       if(!(submittedEvents&&submittedEvents.length) && state.feedMode==="events"){
         setTimeout(()=>{
@@ -3468,8 +3813,13 @@ const merged=[...submittedEvents,...filteredLive];
     }
   }catch(e){
     console.log("Live fetch failed:",e.message,e);
-    showToast("Could not load events: "+e.message);
-    setState({loading:false,liveLoading:false,liveData:false});
+    if(state.feedMode!=="tonight"&&state.feedMode!=="weekend") showToast("Could not load events: "+e.message);
+    state.loading=false;state.liveLoading=false;state.liveData=false;
+    if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+      rebuildPlanFromState();
+      state.planLoading=state.placesLoading;
+    }
+    setState({});
   }
 }
 
@@ -3511,14 +3861,30 @@ async function fetchPlaces(zip, info){
     }
     const fromCache=data.fromCache===true;
     const errMsg=(data.errors&&data.errors.length)?data.errors.join("; "):"";
-    setState({places:filtered,placesLoading:false,placesLive:true,placesFromCache:fromCache,placesError:filtered.length?"":(errMsg||"")});
-    if(filtered.length) showToast(fromCache?`⚡ ${filtered.length} places loaded`:`✓ ${filtered.length} places nearby`);
-    else if(errMsg) showToast("Places: "+errMsg.split(";")[0]);
-    else showToast("No places found nearby");
+    state.places=filtered;state.placesLoading=false;state.placesLive=true;state.placesFromCache=fromCache;state.placesError=filtered.length?"":(errMsg||"");
+    if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+      rebuildPlanFromState();
+      state.planLoading=state.liveLoading;
+      setState({});
+      const n=state.planItems.length;
+      const label=state.feedMode==="tonight"?"Tonight":"This weekend";
+      if(n) showToast(`✓ ${n} ${label.toLowerCase()} picks`);
+      else if(!state.liveLoading) showToast(`No ${label.toLowerCase()} picks yet — try Events or Things to do`);
+    } else {
+      setState({});
+      if(filtered.length) showToast(fromCache?`⚡ ${filtered.length} places loaded`:`✓ ${filtered.length} places nearby`);
+      else if(errMsg) showToast("Places: "+errMsg.split(";")[0]);
+      else showToast("No places found nearby");
+    }
   }catch(e){
     console.log("Places fetch failed:",e.message);
-    setState({placesLoading:false,placesLive:false,placesError:e.message||"Failed to load places"});
-    showToast("Could not load places: "+(e.message||"error"));
+    state.placesLoading=false;state.placesLive=false;state.placesError=e.message||"Failed to load places";
+    if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+      rebuildPlanFromState();
+      state.planLoading=state.liveLoading;
+    }
+    setState({});
+    if(state.feedMode==="places") showToast("Could not load places: "+(e.message||"error"));
   }
 }
 
@@ -3530,16 +3896,44 @@ async function ensurePlacesLoaded(){
 }
 
 function setFeedMode(mode){
-  if(mode!=="events"&&mode!=="places") return;
+  if(mode!=="events"&&mode!=="places"&&mode!=="tonight"&&mode!=="weekend") return;
   if(state.feedMode===mode) return;
   state.feedMode=mode;
   state.openId=null;
   state.viewMode="list";
   state.typeFilter="All";
-  render();
-  if(mode==="places" && state.screen==="results"){
-    ensurePlacesLoaded();
+  if(mode==="tonight"||mode==="weekend"){
+    rebuildPlanFromState();
   }
+  render();
+  if((mode==="places"||mode==="tonight"||mode==="weekend") && state.screen==="results"){
+    ensurePlacesLoaded().then(()=>{
+      if(state.feedMode==="tonight"||state.feedMode==="weekend"){
+        rebuildPlanFromState();
+        setState({planLoading:false});
+      }
+    });
+  }
+}
+
+/** Home CTA: Tonight / This weekend — needs a city/ZIP (or prior search). */
+function startPlan(mode){
+  if(mode!=="tonight"&&mode!=="weekend") return;
+  state.feedMode=mode;
+  state.planItems=[];
+  state.openId=null;
+  state.typeFilter="All";
+  const hasLoc=!!(state.zip || (state.searchInput&&state.searchInput.trim().length>1) || (state.userLat&&state.userLng&&state.info));
+  if(!hasLoc){
+    setState({searchError:"Pick a city or ZIP first — then tap Tonight or This weekend.",feedMode:mode});
+    const inp=document.getElementById("search-input");
+    if(inp) try{inp.focus();}catch(e){}
+    showToast("Search a city or ZIP to plan");
+    return;
+  }
+  const input=state.searchInput&&state.searchInput.trim()?state.searchInput:(state.info?`${state.info.city}${state.info.state?", "+state.info.state:""}`:state.zip);
+  const region=state.info&&state.zip?{...state.info,zip:state.zip,fromGPS:!!(state.userLat&&state.userLng)}:null;
+  doSearch(input, region&&region.zip?region:undefined);
 }
 
 function detectLocation(){
@@ -4180,6 +4574,20 @@ function renderHome(){
         ${state.gpsLoading?`<div style="width:16px;height:16px;border-radius:50%;border:2px solid rgba(165,180,252,0.3);border-top-color:#a5b4fc;animation:spin 0.8s linear infinite"></div><span style="color:#a5b4fc;font-size:13px;font-weight:600">Detecting location…</span>`:`<span style="font-size:15px">📍</span><span style="color:#c7d2fe;font-size:14px;font-weight:600">Use my current location</span>`}
       </div>
 
+      <div class="plan-cta">
+        <div class="plan-cta-label">What do you want to do?</div>
+        <div class="plan-seg">
+          <div class="plan-btn ${state.feedMode==="tonight"?"active-tonight":""}" data-plan="tonight">
+            <span>🌙 Tonight</span>
+            <span class="plan-sub">Near you · open soon</span>
+          </div>
+          <div class="plan-btn ${state.feedMode==="weekend"?"active-weekend":""}" data-plan="weekend">
+            <span>📅 This weekend</span>
+            <span class="plan-sub">Sat–Sun picks</span>
+          </div>
+        </div>
+      </div>
+
       <div style="display:flex;justify-content:center;margin-bottom:18px">
         <div class="seg">
           <div class="feed-mode-btn seg-btn ${state.feedMode==="events"?"active-events":""}" data-mode="events">Events</div>
@@ -4207,7 +4615,7 @@ function renderHome(){
 
       <div style="margin-bottom:12px;position:relative">
         <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:0.4">🔍</span>
-        <input id="event-search-input" type="text" value="${(state.eventSearch||'').replace(/"/g,'&quot;')}" placeholder="${state.feedMode==="places"?"Search places…":"Search events…"}" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#f1f5f9;padding:10px 12px 10px 36px;font-size:14px;box-sizing:border-box;outline:none">
+        <input id="event-search-input" type="text" value="${(state.eventSearch||'').replace(/"/g,'&quot;')}" placeholder="${state.feedMode==="places"?"Search places…":state.feedMode==="tonight"||state.feedMode==="weekend"?"Filter picks…":"Search events…"}" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#f1f5f9;padding:10px 12px 10px 36px;font-size:14px;box-sizing:border-box;outline:none">
         ${state.eventSearch?`<span id="clear-event-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:12px;color:rgba(255,255,255,0.75)">✕</span>`:""}
       </div>
 
@@ -4223,7 +4631,7 @@ function renderHome(){
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${DATE_RANGES.map(d=>`<div class="range-btn" data-range="${d.id}" style="padding:6px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.35)":"rgba(255,255,255,0.06)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer">${d.label}</div>`).join("")}
         </div>
-      </div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
+      </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">A short ranked mix of nearby events + places for <strong style="color:#fcd34d;font-weight:650">tonight</strong> — closer, open, free when it fits.</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Weekend plan: Sat–Sun events plus evergreen spots worth the trip. One tap — stop scrolling.</div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
 
 
 
@@ -4233,15 +4641,17 @@ function renderHome(){
 }
 
 function renderResults(){
+  const isPlan=state.feedMode==="tonight"||state.feedMode==="weekend";
   const isPlaces=state.feedMode==="places";
-  const sourceList=isPlaces?state.places:state.events;
+  const sourceList=isPlan?state.planItems:(isPlaces?state.places:state.events);
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
 const filtered=sourceList.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
     // Family who-filter hides nightlife only when user picks Families — not by default
     if(state.whoFilter==="family"&&(ev.type==="Nightlife"))return false;
-    if(!isPlaces && state.freeOnly&&ev.cost!=="Free")return false;
-    if(!isPlaces){
+    if(!isPlaces && !isPlan && state.freeOnly&&ev.cost!=="Free")return false;
+    if(isPlan && state.freeOnly && !isLikelyFree(ev)) return false;
+    if(!isPlaces && !isPlan){
       // Respect the "how far out" range. Use the same date field the grouping uses.
       const evDate=ev.date||ev.startDate;
       if(state.dateRange==="weekend"){
@@ -4254,11 +4664,15 @@ const filtered=sourceList.filter(ev=>{
     // Text search across name / venue / address / description / type
     if(state.eventSearch){
       const q=state.eventSearch;
-      const hay=((ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||ev.desc||"")+" "+(ev.type||"")+" "+(ev.hours||"")).toLowerCase();
+      const hay=((ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||ev.desc||"")+" "+(ev.type||"")+" "+(ev.hours||"")+" "+(ev.reason||"")).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
   }).sort((a,b)=>{
+    if(isPlan){
+      // Already ranked by score; keep stable score order (filters may remove items)
+      return (b.score||0)-(a.score||0);
+    }
     if(isPlaces){
       const distA = (state.userLat&&state.userLng&&a.lat&&a.lng)
         ? haversine(state.userLat,state.userLng,parseFloat(a.lat),parseFloat(a.lng))
@@ -4305,16 +4719,21 @@ const filtered=sourceList.filter(ev=>{
     return a.date.localeCompare(b.date);
   });
   const types=["All",...new Set(sourceList.map(e=>e.type))];
-  const freeCount=isPlaces?0:filtered.filter(e=>e.cost==="Free").length;
-  const weekendCount=isPlaces?0:filtered.filter(e=>e.isWeekend).length;
+  const freeCount=(isPlaces&&!isPlan)?0:filtered.filter(e=>isLikelyFree(e)||e.cost==="Free").length;
+  const weekendCount=isPlaces||isPlan?0:filtered.filter(e=>e.isWeekend).length;
   const selectedRange=DATE_RANGES.find(d=>d.id===state.dateRange);
   const ratedCount=isPlaces?filtered.filter(e=>e.rating!=null).length:0;
+  const planLabel=state.feedMode==="tonight"?"Tonight":"This weekend";
 
-  const loadingNow=isPlaces
+  const loadingNow=isPlan
+    ? (state.coordsLoading||state.planLoading||state.liveLoading||state.placesLoading)
+    : isPlaces
     ? (state.coordsLoading||state.placesLoading)
     : (state.loading||state.coordsLoading||state.liveLoading);
   if(loadingNow){
-    const loadLabel=isPlaces?(state.placesLoading?"Finding things to do":"Loading places"):(state.liveLoading?"Loading events":"Finding events near you");
+    const loadLabel=isPlan
+      ?(state.feedMode==="tonight"?"Building tonight's list":"Building weekend picks")
+      :isPlaces?(state.placesLoading?"Finding things to do":"Loading places"):(state.liveLoading?"Loading events":"Finding events near you");
     const loadLoc=`${state.info?.city||state.zip}${state.info?.state?", "+state.info.state:""}`;
     return`<div style="min-height:100vh;background:#0a0a0f;padding-top:28px">
       <div style="text-align:center;margin-bottom:8px;padding:0 20px">
@@ -4399,11 +4818,11 @@ const filtered=sourceList.filter(ev=>{
     const isGoing=state.going.has(ev.id);
     const count=state.attendanceCounts[ev.id]||0;
     const isPlace=isPlaces||ev.kind==="place";
-    const evGroup=isPlace?(ev.type||"Places"):getEvGroup(ev.date||ev.startDate);
-    const groupCount=filtered.filter(e=> (isPlace?(e.type||"Places"):getEvGroup(e.date||e.startDate))===evGroup).length;
+    const evGroup=isPlan?(state.feedMode==="tonight"?"Tonight picks":"Weekend picks"):(isPlace?(ev.type||"Places"):getEvGroup(ev.date||ev.startDate));
+    const groupCount=isPlan?filtered.length:filtered.filter(e=> (isPlace?(e.type||"Places"):getEvGroup(e.date||e.startDate))===evGroup).length;
     const showHeader=evGroup!==lastGroup;
     if(showHeader) lastGroup=evGroup;
-    const header=showHeader?`<div class="group-header${idx===0?" first":""}"><span style="font-size:11px;font-weight:700;color:${isPlace?(meta.color):(GROUP_COLORS[evGroup]||"rgba(255,255,255,0.3)")};text-transform:uppercase;letter-spacing:1.2px">${evGroup}</span><div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div><span style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:600">${groupCount}</span></div>`:"";
+    const header=showHeader?`<div class="group-header${idx===0?" first":""}"><span style="font-size:11px;font-weight:700;color:${isPlan?(state.feedMode==="tonight"?"#fcd34d":"#a5b4fc"):(isPlace?(meta.color):(GROUP_COLORS[evGroup]||"rgba(255,255,255,0.3)"))};text-transform:uppercase;letter-spacing:1.2px">${evGroup}</span><div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div><span style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:600">${groupCount}</span></div>`:"";
     const searchText=(ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||"");
     const dateLabel=formatDate(ev.date);
     const isSoon=ev.date==="Today"||ev.date==="Tomorrow"||dateLabel==="Today"||dateLabel==="Tomorrow";
@@ -4422,12 +4841,14 @@ const filtered=sourceList.filter(ev=>{
           </div>
           <div class="card-title">${san(ev.name)}</div>
           <div class="card-meta-row">
-            ${isPlace
+            ${isPlan&&ev.reason?`<span class="meta-chip reason">${san(ev.reason)}</span>`:""}
+            ${isPlan?`<span class="meta-chip" style="background:${isPlace?"rgba(236,72,153,0.12)":"rgba(99,102,241,0.14)"};color:${isPlace?"#f9a8d4":"#c7d2fe"}">${isPlace?"Place":"Event"}</span>`:""}
+            ${!isPlan?(isPlace
               ?`<span class="meta-chip rating">${ev.rating!=null?("★ "+ev.rating):"Place"}${ev.reviews!=null?` <span style="opacity:0.55;font-weight:500">(${ev.reviews})</span>`:""}</span>`
               :`<span class="meta-chip date${isSoon?" soon":""}">${dateLabel}</span>`
-            }
-            ${distLabel?`<span class="meta-chip dist">${distLabel}</span>`:""}
-            ${isPlace&&ev.hours?`<span class="meta-chip hours">${san(ev.hours)}</span>`:""}
+            ):""}
+            ${!isPlan&&distLabel?`<span class="meta-chip dist">${distLabel}</span>`:""}
+            ${!isPlan&&isPlace&&ev.hours?`<span class="meta-chip hours">${san(ev.hours)}</span>`:""}
           </div>
           <div class="meta-quiet" style="margin-top:4px">${san(ev.location||ev.address||"")}${ev.address&&ev.address!==ev.location&&!isPlace?` · ${san(ev.address)}`:""}</div>
         </div>
@@ -4524,16 +4945,22 @@ const filtered=sourceList.filter(ev=>{
         <div id="back-btn" style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">←</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:17px;letter-spacing:-0.35px;color:#f8fafc">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""}</div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.42);margin-top:2px">${isPlaces
+          <div style="font-size:12px;color:rgba(255,255,255,0.42);margin-top:2px">${isPlan
+            ? `${filtered.length} ${planLabel.toLowerCase()} picks · ranked mix`
+            : isPlaces
             ? `${filtered.length} places${ratedCount?` · ${ratedCount} rated`:""} · ${state.placesLive?(state.placesFromCache?'<span style="color:#f59e0b">⚡ Cached</span>':'<span style="color:#6ee7b7">● Live</span>'):'<span style="color:rgba(255,255,255,0.35)">● —</span>'}`
             : `${filtered.length} events · ${selectedRange?.label} · ${state.liveData?(state.fromCache?'<span style="color:#f59e0b">⚡ Cached</span>':'<span style="color:#6ee7b7">● Live</span>'):'<span style="color:rgba(255,255,255,0.35)">● Preview</span>'}`
           }</div>
           <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
             <div class="seg compact">
-              <div class="feed-mode-btn seg-btn ${!isPlaces?"active-events":""}" data-mode="events">Events</div>
-              <div class="feed-mode-btn seg-btn ${isPlaces?"active-places":""}" data-mode="places">Things to do</div>
+              <div class="plan-btn-mini feed-mode-btn seg-btn ${state.feedMode==="tonight"?"active-tonight":""}" data-mode="tonight" style="${state.feedMode==="tonight"?"background:linear-gradient(135deg,rgba(245,158,11,0.55),rgba(236,72,153,0.4));color:#fff;box-shadow:0 2px 10px rgba(245,158,11,0.25)":""}">Tonight</div>
+              <div class="plan-btn-mini feed-mode-btn seg-btn ${state.feedMode==="weekend"?"active-weekend":""}" data-mode="weekend" style="${state.feedMode==="weekend"?"background:linear-gradient(135deg,rgba(99,102,241,0.55),rgba(139,92,246,0.4));color:#e0e7ff;box-shadow:0 2px 10px rgba(99,102,241,0.25)":""}">Weekend</div>
             </div>
-            ${!isPlaces?`<div id="submit-btn" style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.28);color:#c7d2fe;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">＋ Add event</div>`:""}
+            <div class="seg compact">
+              <div class="feed-mode-btn seg-btn ${state.feedMode==="events"?"active-events":""}" data-mode="events">Events</div>
+              <div class="feed-mode-btn seg-btn ${state.feedMode==="places"?"active-places":""}" data-mode="places">Things to do</div>
+            </div>
+            ${state.feedMode==="events"?`<div id="submit-btn" style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.28);color:#c7d2fe;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">＋ Add event</div>`:""}
           </div>
         </div>
         <!-- View toggle -->
@@ -4547,9 +4974,10 @@ const filtered=sourceList.filter(ev=>{
         }
       </div>
       <div style="display:flex;gap:5px;max-width:700px;margin:0 auto;flex-wrap:wrap">
-        <span style="padding:3px 9px;border-radius:6px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:11px;font-weight:500">${filtered.length} ${isPlaces?"places":"events"}</span>
-        ${!isPlaces&&freeCount?`<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.07);color:#6ee7b7;font-size:11px;font-weight:500">${freeCount} free</span>`:""}
-        ${!isPlaces&&weekendCount?`<span style="padding:3px 9px;border-radius:6px;background:rgba(99,102,241,0.07);color:#a5b4fc;font-size:11px;font-weight:500">${weekendCount} this weekend</span>`:""}
+        <span style="padding:3px 9px;border-radius:6px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:11px;font-weight:500">${filtered.length} ${isPlan?"picks":(isPlaces?"places":"events")}</span>
+        ${isPlan?`<span style="padding:3px 9px;border-radius:6px;background:rgba(245,158,11,0.1);color:#fcd34d;font-size:11px;font-weight:500">${planLabel}</span>`:""}
+        ${freeCount?`<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.07);color:#6ee7b7;font-size:11px;font-weight:500">${freeCount} free</span>`:""}
+        ${!isPlaces&&!isPlan&&weekendCount?`<span style="padding:3px 9px;border-radius:6px;background:rgba(99,102,241,0.07);color:#a5b4fc;font-size:11px;font-weight:500">${weekendCount} this weekend</span>`:""}
         ${isPlaces&&state.placesError?`<span style="padding:3px 9px;border-radius:6px;background:rgba(239,68,68,0.1);color:#fca5a5;font-size:11px;font-weight:500">${san(state.placesError).slice(0,80)}</span>`:""}
       </div>
     </div>
@@ -4560,6 +4988,13 @@ const filtered=sourceList.filter(ev=>{
     `:`
     <!-- List view -->
     <div style="max-width:700px;margin:0 auto;padding:14px 14px 88px">
+      ${isPlan?`<div class="plan-banner">
+        <span style="font-size:18px">${state.feedMode==="tonight"?"🌙":"📅"}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:650;color:#f8fafc">${planLabel} in ${state.info?.city||state.zip}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">Stop scrolling. Start doing. · Events + places, ranked for you</div>
+        </div>
+      </div>`:""}
       <div style="margin-bottom:12px">
         <div style="display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap">
           ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)"};display:flex;align-items:center;gap:4px">${w.icon} ${w.label}</div>`).join("")}
@@ -4579,23 +5014,29 @@ const filtered=sourceList.filter(ev=>{
               return`<div class="type-filter" data-type="${t}" style="padding:6px 14px;border-radius:999px;background:${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.06)"};color:${active?"#fff":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:${active?700:500};cursor:pointer;border:1.5px solid ${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0;transition:all 0.15s">${icon}${label}</div>`;
             }).join("");
             })()}
-            ${!isPlaces?`<div class="toggle-free" style="padding:6px 14px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.06)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid ${state.freeOnly?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0">💚 Free</div>`:""}
+            ${!isPlaces||isPlan?`<div class="toggle-free" style="padding:6px 14px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.06)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid ${state.freeOnly?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0">💚 Free</div>`:""}
             <div class="clear-all" style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:12px;cursor:pointer;border:1.5px solid rgba(255,255,255,0.06);white-space:nowrap;flex-shrink:0">✕ Clear</div>
           </div>
         </div>
       </div>
       ${filtered.length===0?`<div class="empty-state">
-        <div class="empty-icon">${isPlaces?"◎":"✦"}</div>
-        <h3>${isPlaces?(state.placesError?"Couldn't load places":"Quiet around here"):(sourceList.length===0?"Quiet night in town":"Nothing matches those filters")}</h3>
-        <p>${isPlaces
+        <div class="empty-icon">${isPlan?(state.feedMode==="tonight"?"🌙":"📅"):(isPlaces?"◎":"✦")}</div>
+        <h3>${isPlan
+          ? (sourceList.length===0?`Nothing lined up for ${planLabel.toLowerCase()} yet`:"Nothing matches those filters")
+          : isPlaces?(state.placesError?"Couldn't load places":"Quiet around here"):(sourceList.length===0?"Quiet night in town":"Nothing matches those filters")}</h3>
+        <p>${isPlan
+          ? "Try browsing Things to do or full Events — or switch Tonight ↔ This weekend."
+          : isPlaces
           ?(state.placesError?"Try again in a moment, or search a nearby city.":"We didn't find places nearby — try another city or switch to Events.")
           :(sourceList.length===0
             ?"Small towns can be sparse. Widen the date range, switch to Things to do, or add a local event."
             :"Clear filters or pick a wider date range to see more.")}</p>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-          ${!isPlaces||!state.placesError?`<div class="clear-all" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.08)">Clear filters</div>`:""}
-          ${!isPlaces&&sourceList.length===0?`<div class="feed-mode-btn" data-mode="places" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(236,72,153,0.15);color:#f9a8d4;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(236,72,153,0.25)">Try Things to do</div>`:""}
-          ${isPlaces&&!state.placesError?`<div class="feed-mode-btn" data-mode="events" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(99,102,241,0.15);color:#c7d2fe;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(99,102,241,0.25)">Try Events</div>`:""}
+          ${!isPlan&&(!isPlaces||!state.placesError)?`<div class="clear-all" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.08)">Clear filters</div>`:""}
+          ${isPlan||(!isPlaces&&sourceList.length===0)?`<div class="feed-mode-btn" data-mode="places" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(236,72,153,0.15);color:#f9a8d4;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(236,72,153,0.25)">Try Things to do</div>`:""}
+          ${isPlan||(isPlaces&&!state.placesError)?`<div class="feed-mode-btn" data-mode="events" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(99,102,241,0.15);color:#c7d2fe;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(99,102,241,0.25)">Try Events</div>`:""}
+          ${isPlan&&state.feedMode==="tonight"?`<div class="feed-mode-btn" data-mode="weekend" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(99,102,241,0.15);color:#c7d2fe;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(99,102,241,0.25)">Try This weekend</div>`:""}
+          ${isPlan&&state.feedMode==="weekend"?`<div class="feed-mode-btn" data-mode="tonight" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(245,158,11,0.15);color:#fcd34d;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(245,158,11,0.25)">Try Tonight</div>`:""}
         </div>
       </div>`:cards}
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
@@ -4884,7 +5325,26 @@ function bindEvents(){
   }
   const go=document.getElementById("search-go");
   if(go)go.addEventListener("click",()=>{state.suggestions=[];renderSuggestions([]);doSearch(state.searchInput);});
-  document.querySelectorAll(".feed-mode-btn").forEach(el=>el.addEventListener("click",()=>setFeedMode(el.dataset.mode)));
+  document.querySelectorAll(".plan-btn").forEach(el=>el.addEventListener("click",()=>startPlan(el.dataset.plan)));
+  document.querySelectorAll(".feed-mode-btn").forEach(el=>el.addEventListener("click",()=>{
+    const mode=el.dataset.mode;
+    if((mode==="tonight"||mode==="weekend") && state.screen==="results" && state.zip){
+      if(state.feedMode!==mode){
+        state.feedMode=mode;
+        state.openId=null;
+        state.typeFilter="All";
+        rebuildPlanFromState();
+        render();
+        ensurePlacesLoaded().then(()=>{ rebuildPlanFromState(); setState({planLoading:false}); });
+      }
+      return;
+    }
+    if((mode==="tonight"||mode==="weekend") && state.screen==="home"){
+      startPlan(mode);
+      return;
+    }
+    setFeedMode(mode);
+  }));
   document.querySelectorAll(".who-btn").forEach(el=>el.addEventListener("click",()=>setState({whoFilter:el.dataset.who})));
   document.querySelectorAll(".range-btn").forEach(el=>el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();}));
   
@@ -4897,8 +5357,11 @@ function bindEvents(){
       state.viewMode="map";render();
       setTimeout(()=>{
         const isPlaces=state.feedMode==="places";
+        const isPlan=state.feedMode==="tonight"||state.feedMode==="weekend";
         const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
-        const filtered=isPlaces
+        const filtered=isPlan
+          ? (state.planItems||[]).slice()
+          : isPlaces
           ? state.places.filter(ev=>{
               if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
               if(state.whoFilter==="family"&&ev.type==="Nightlife")return false;
@@ -4958,7 +5421,7 @@ function bindEvents(){
   const back=document.getElementById("back-btn");
   if(back)back.addEventListener("click",()=>{
     state.userLat=null;state.userLng=null;
-    setState({screen:"home",zip:"",events:[],places:[],placesLive:false,placesLoading:false,placesError:"",info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list",eventSearch:""});
+    setState({screen:"home",zip:"",events:[],places:[],placesLive:false,placesLoading:false,placesError:"",info:null,openId:null,searchInput:"",suggestions:[],viewMode:"list",eventSearch:"",planItems:[],planLoading:false});
   });
 
   // Submit event button
