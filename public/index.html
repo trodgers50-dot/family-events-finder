@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
-<meta name="bf-build" content="standout-v1">
+<meta name="bf-build" content="standout-v1-when">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -5355,7 +5355,16 @@ const filtered=sourceList.filter(ev=>{
         <span style="font-size:16px">${state.feedMode==="tonight"?"🌙":"📅"}</span>
         <div style="flex:1;min-width:0;font-size:12px;color:rgba(255,255,255,0.7);font-weight:600;letter-spacing:-0.1px">${planLabel} in ${state.info?.city||state.zip} <span style="opacity:0.45;font-weight:500">· Events then Things to do</span></div>
       </div>`:""}
-      <div id="filters-toggle" class="filters-toggle${state.filtersOpen?" open":""}">⚙ Filters ${state.typeFilter!=="All"||state.whoFilter!=="all"||state.freeOnly?"· on":""} ${state.filtersOpen?"▴":"▾"}</div>
+      ${!isPlan&&!isPlaces?`<div class="when-row" style="margin-bottom:10px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px;padding-left:2px">When</div>
+        <div class="chip-row" style="display:flex;gap:6px;flex-wrap:nowrap;min-width:max-content;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px">
+          ${DATE_RANGES.map(r=>{
+            const active=state.dateRange===r.id;
+            return `<div class="range-filter" data-range="${r.id}" style="padding:8px 14px;border-radius:999px;background:${active?"linear-gradient(135deg,rgba(99,102,241,0.55),rgba(139,92,246,0.4))":"rgba(255,255,255,0.04)"};color:${active?"#e0e7ff":"rgba(255,255,255,0.45)"};font-size:12px;font-weight:${active?700:550};cursor:pointer;border:1px solid ${active?"rgba(99,102,241,0.45)":"rgba(255,255,255,0.07)"};white-space:nowrap;flex-shrink:0;box-shadow:${active?"0 2px 12px rgba(99,102,241,0.25)":"none"}">${r.label}</div>`;
+          }).join("")}
+        </div>
+      </div>`:""}
+      <div id="filters-toggle" class="filters-toggle${state.filtersOpen?" open":""}">⚙ Filters ${state.typeFilter!=="All"||state.whoFilter!=="all"||state.freeOnly||(!isPlan&&!isPlaces&&state.dateRange!=="3months")?"· on":""}${!isPlan&&!isPlaces?` · ${selectedRange?.label||"3 Months"}`:""} ${state.filtersOpen?"▴":"▾"}</div>
       ${state.filtersOpen?`<div class="filters-panel filters-quiet">
         <div class="chip-row" style="display:flex;gap:5px;flex-wrap:nowrap;min-width:max-content;padding-bottom:2px;margin-bottom:8px">
           ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 11px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.14)":"transparent"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.32)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.28)":"rgba(255,255,255,0.04)"};display:flex;align-items:center;gap:4px;flex-shrink:0;white-space:nowrap">${w.icon} ${w.label}</div>`).join("")}
@@ -5417,7 +5426,7 @@ const filtered=sourceList.filter(ev=>{
         <div style="text-align:center;margin-top:8px;font-size:10px;color:rgba(255,255,255,0.75);display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <a href="https://buzzfinder.app/privacy.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Privacy Policy</a>
           <a href="https://buzzfinder.app/terms.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Terms of Use</a>
-          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build standout-v1</span>
+          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build standout-v1-when</span>
         </div>
       </div>
     </div>`}
