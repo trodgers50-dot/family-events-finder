@@ -10,6 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
+<meta name="bf-build" content="plan-sections-v3">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -3527,7 +3528,7 @@ function buildPlanFeed(events, places, mode){
 function rebuildPlanFromState(){
   if(state.feedMode!=="tonight" && state.feedMode!=="weekend") return;
   const items=buildPlanFeed(state.events, state.places, state.feedMode);
-  state.planItems=items;
+  state.planItems=items.map(it=>({...it, kind: it.kind==="place"?"place":"event"}));
 }
 function getWeather(ds,r){
   const W={VA:[{i:"🌨",l:"38°",t:"Cold"},{i:"🌦",l:"52°",t:"Cool"},{i:"🌤",l:"62°",t:"Mild"},{i:"⛅",l:"70°",t:"Nice"},{i:"☀",l:"78°",t:"Warm"},{i:"🌡",l:"88°",t:"Hot"},{i:"🌡",l:"90°",t:"Hot"},{i:"🌡",l:"88°",t:"Hot"},{i:"☀",l:"80°",t:"Warm"},{i:"🌤",l:"68°",t:"Mild"},{i:"🌥",l:"56°",t:"Cool"},{i:"🌨",l:"44°",t:"Cold"}],DEFAULT:[{i:"❄",l:"32°",t:"Cold"},{i:"🌥",l:"42°",t:"Cold"},{i:"🌤",l:"55°",t:"Mild"},{i:"⛅",l:"65°",t:"Nice"},{i:"☀",l:"72°",t:"Warm"},{i:"🌡",l:"82°",t:"Hot"},{i:"🌡",l:"85°",t:"Hot"},{i:"🌡",l:"83°",t:"Hot"},{i:"☀",l:"75°",t:"Warm"},{i:"🌤",l:"63°",t:"Cool"},{i:"🌥",l:"50°",t:"Cool"},{i:"❄",l:"38°",t:"Cold"}]};
@@ -3585,7 +3586,7 @@ let state={
   eventSearch:"",
   feedMode:"events", // "events" | "places" | "tonight" | "weekend"
   places:[],placesLoading:false,placesLive:false,placesFromCache:false,placesError:"",
-  planItems:[],planLoading:false,
+  planItems:[],planLoading:false,planLens:"all",
 };
 
 function setState(u){Object.assign(state,u);render();}
@@ -3680,7 +3681,7 @@ async function doSearch(input,regionOverride){
   setState({coordsLoading:false});
 
   const planMode=state.feedMode==="tonight"||state.feedMode==="weekend";
-  setState({loading:false,liveLoading:true,screen:"results",events:[],places:[],placesLoading:state.feedMode==="places"||planMode,placesLive:false,placesFromCache:false,placesError:"",openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list",planItems:[],planLoading:planMode});
+  setState({loading:false,liveLoading:true,screen:"results",events:[],places:[],placesLoading:state.feedMode==="places"||planMode,placesLive:false,placesFromCache:false,placesError:"",openId:null,liveData:false,liveLoading:true,info,zip,searchError:"",attendanceCounts:{},viewMode:"list",planItems:[],planLoading:planMode,planLens:"all"});
 
 
   // Places feed: Things to do, or plan modes (Tonight / This weekend) need both feeds
@@ -4821,7 +4822,14 @@ const filtered=sourceList.filter(ev=>{
   const GROUP_COLORS={"Today":"#6ee7b7","Tomorrow":"#a5b4fc","This Weekend":"#f97316","Next Week":"rgba(255,255,255,0.4)","This Month":"rgba(255,255,255,0.3)","Later":"rgba(255,255,255,0.2)"};
   let lastGroup="";
 
-  const cards=filtered.map((ev,idx)=>{
+  // Plan mode: hard-split into Events then Things to do (never interleaved)
+  const planEvents=isPlan?filtered.filter(e=>e.kind!=="place").sort((a,b)=>(b.score||0)-(a.score||0)):[];
+  const planPlaces=isPlan?filtered.filter(e=>e.kind==="place").sort((a,b)=>(b.score||0)-(a.score||0)):[];
+  const planLens=state.planLens||"all";
+  const displayList=isPlan
+    ? (planLens==="events"?planEvents:planLens==="places"?planPlaces:[...planEvents,...planPlaces])
+    : filtered;
+  const cards=displayList.map((ev,idx)=>{
     const meta=m2(ev.type);
     const isOpen=state.openId===ev.id;
     const isFav=state.favs.has(ev.id);
@@ -4831,7 +4839,7 @@ const filtered=sourceList.filter(ev=>{
     const planGroup=ev.kind==="place"?"Things to do":"Events";
     const evGroup=isPlan?planGroup:(isPlace?(ev.type||"Places"):getEvGroup(ev.date||ev.startDate));
     const groupCount=isPlan
-      ?filtered.filter(e=>(e.kind==="place"?"Things to do":"Events")===evGroup).length
+      ?(evGroup==="Events"?planEvents.length:planPlaces.length)
       :filtered.filter(e=> (isPlace?(e.type||"Places"):getEvGroup(e.date||e.startDate))===evGroup).length;
     const showHeader=evGroup!==lastGroup;
     if(showHeader) lastGroup=evGroup;
@@ -4844,7 +4852,7 @@ const filtered=sourceList.filter(ev=>{
     return header+`
     <div class="buzz-card${isOpen?" open":""}" data-search="${searchText.toLowerCase().replace(/"/g,"")}">
       ${isOpen?`<div style="position:relative;height:168px;overflow:hidden"><img src="${ev.photo}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.7"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.95) 0%,transparent 55%)"></div><div style="position:absolute;top:12px;left:12px;padding:5px 11px;border-radius:999px;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);color:${meta.color};font-size:11px;font-weight:700">${san(ev.type)}</div>${ev.isWeekend?`<div style="position:absolute;top:12px;right:12px;padding:5px 11px;border-radius:999px;background:rgba(99,102,241,0.75);backdrop-filter:blur(8px);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
-      <div class="card-row buzz-card-row" data-id="${ev.id}" style="${!isOpen&&idx<filtered.length-1?"border-bottom:1px solid rgba(255,255,255,0.04)":""}">
+      <div class="card-row buzz-card-row" data-id="${ev.id}" style="${!isOpen&&idx<displayList.length-1?"border-bottom:1px solid rgba(255,255,255,0.04)":""}">
         <div class="card-icon" style="background:${meta.color}14;border:1px solid ${meta.color}28">${meta.icon}</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
@@ -4950,6 +4958,13 @@ const filtered=sourceList.filter(ev=>{
     </div>`;
   }).join("");
 
+  const lensBar=isPlan?`<div class="plan-lens" style="display:flex;gap:6px;margin:0 0 12px;padding:4px;border-radius:14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">
+      <div class="plan-lens-btn" data-lens="all" style="flex:1;text-align:center;padding:10px 6px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;background:${planLens==="all"?"rgba(255,255,255,0.12)":"transparent"};color:${planLens==="all"?"#fff":"rgba(255,255,255,0.45)"}">All</div>
+      <div class="plan-lens-btn" data-lens="events" style="flex:1;text-align:center;padding:10px 6px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;background:${planLens==="events"?"rgba(99,102,241,0.4)":"transparent"};color:${planLens==="events"?"#e0e7ff":"rgba(255,255,255,0.45)"}">📅 Events · ${planEvents.length}</div>
+      <div class="plan-lens-btn" data-lens="places" style="flex:1;text-align:center;padding:10px 6px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;background:${planLens==="places"?"rgba(236,72,153,0.4)":"transparent"};color:${planLens==="places"?"#fce7f3":"rgba(255,255,255,0.45)"}">📍 Things · ${planPlaces.length}</div>
+    </div>`:"";
+  const listHtml=lensBar+cards;
+
   return`
   ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap;font-size:14px">${state.toast}</div>`:""}
   <div style="min-height:100vh;background:#0a0a0f;color:#fff">
@@ -5006,7 +5021,7 @@ const filtered=sourceList.filter(ev=>{
         <span style="font-size:18px">${state.feedMode==="tonight"?"🌙":"📅"}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:650;color:#f8fafc">${planLabel} in ${state.info?.city||state.zip}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">Stop scrolling. Start doing. · Events + places, ranked for you</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">Events first, then Things to do — separate sections</div>
         </div>
       </div>`:""}
       <div style="margin-bottom:12px">
@@ -5052,7 +5067,7 @@ const filtered=sourceList.filter(ev=>{
           ${isPlan&&state.feedMode==="tonight"?`<div class="feed-mode-btn" data-mode="weekend" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(99,102,241,0.15);color:#c7d2fe;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(99,102,241,0.25)">Try This weekend</div>`:""}
           ${isPlan&&state.feedMode==="weekend"?`<div class="feed-mode-btn" data-mode="tonight" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(245,158,11,0.15);color:#fcd34d;font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(245,158,11,0.25)">Try Tonight</div>`:""}
         </div>
-      </div>`:cards}
+      </div>`:listHtml}
       <div style="margin-top:40px;padding:20px 0;border-top:1px solid rgba(255,255,255,0.05)">
         <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;text-align:center">Powered by</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
@@ -5359,6 +5374,7 @@ function bindEvents(){
     }
     setFeedMode(mode);
   }));
+  document.querySelectorAll(".plan-lens-btn").forEach(el=>el.addEventListener("click",()=>{state.planLens=el.dataset.lens||"all";render();}));
   document.querySelectorAll(".who-btn").forEach(el=>el.addEventListener("click",()=>setState({whoFilter:el.dataset.who})));
   document.querySelectorAll(".range-btn").forEach(el=>el.addEventListener("click",()=>{state.dateRange=el.dataset.range;render();}));
   
