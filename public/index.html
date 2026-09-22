@@ -3503,18 +3503,25 @@ function buildPlanFeed(events, places, mode){
     if(score < -25) return;
     merged.push({...item, score, reason:buildPlanReason(item, mode)});
   });
-  merged.sort((a,b)=>b.score-a.score);
-  // Diversify a bit: avoid 10 of the same type dominating
-  const typeCounts={};
-  const diversified=[];
-  for(const it of merged){
-    const t=(it.kind||"")+"|"+(it.type||"");
-    typeCounts[t]=(typeCounts[t]||0)+1;
-    if(typeCounts[t]>4) continue;
-    diversified.push(it);
-    if(diversified.length>=PLAN_LIMIT) break;
-  }
-  return diversified;
+  // Split Events vs Things to do, rank within each section
+  const diversify=(arr, limit)=>{
+    const typeCounts={};
+    const out=[];
+    const sorted=[...arr].sort((a,b)=>b.score-a.score);
+    for(const it of sorted){
+      const t=(it.kind||"")+"|"+(it.type||"");
+      typeCounts[t]=(typeCounts[t]||0)+1;
+      if(typeCounts[t]>4) continue;
+      out.push(it);
+      if(out.length>=limit) break;
+    }
+    return out;
+  };
+  const perSection=Math.max(5, Math.ceil(PLAN_LIMIT/2));
+  const eventItems=diversify(merged.filter(it=>it.kind==="event"), perSection);
+  const placeItems=diversify(merged.filter(it=>it.kind==="place"), perSection);
+  // Events first, then Things to do — keep ranked within each block
+  return [...eventItems, ...placeItems];
 }
 
 function rebuildPlanFromState(){
@@ -4631,7 +4638,7 @@ function renderHome(){
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${DATE_RANGES.map(d=>`<div class="range-btn" data-range="${d.id}" style="padding:6px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.35)":"rgba(255,255,255,0.06)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer">${d.label}</div>`).join("")}
         </div>
-      </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">A short ranked mix of nearby events + places for <strong style="color:#fcd34d;font-weight:650">tonight</strong> — closer, open, free when it fits.</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Weekend plan: Sat–Sun events plus evergreen spots worth the trip. One tap — stop scrolling.</div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
+      </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Tonight split into <strong style="color:#fcd34d;font-weight:650">Events</strong> and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> — closer, open, free when it fits.</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Weekend plan with <strong style="color:#a5b4fc;font-weight:650">Events</strong> and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> in separate sections. One tap — stop scrolling.</div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
 
 
 
@@ -4818,11 +4825,15 @@ const filtered=sourceList.filter(ev=>{
     const isGoing=state.going.has(ev.id);
     const count=state.attendanceCounts[ev.id]||0;
     const isPlace=isPlaces||ev.kind==="place";
-    const evGroup=isPlan?(state.feedMode==="tonight"?"Tonight picks":"Weekend picks"):(isPlace?(ev.type||"Places"):getEvGroup(ev.date||ev.startDate));
-    const groupCount=isPlan?filtered.length:filtered.filter(e=> (isPlace?(e.type||"Places"):getEvGroup(e.date||e.startDate))===evGroup).length;
+    const planGroup=ev.kind==="place"?"Things to do":"Events";
+    const evGroup=isPlan?planGroup:(isPlace?(ev.type||"Places"):getEvGroup(ev.date||ev.startDate));
+    const groupCount=isPlan
+      ?filtered.filter(e=>(e.kind==="place"?"Things to do":"Events")===evGroup).length
+      :filtered.filter(e=> (isPlace?(e.type||"Places"):getEvGroup(e.date||e.startDate))===evGroup).length;
     const showHeader=evGroup!==lastGroup;
     if(showHeader) lastGroup=evGroup;
-    const header=showHeader?`<div class="group-header${idx===0?" first":""}"><span style="font-size:11px;font-weight:700;color:${isPlan?(state.feedMode==="tonight"?"#fcd34d":"#a5b4fc"):(isPlace?(meta.color):(GROUP_COLORS[evGroup]||"rgba(255,255,255,0.3)"))};text-transform:uppercase;letter-spacing:1.2px">${evGroup}</span><div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div><span style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:600">${groupCount}</span></div>`:"";
+    const planHeaderColor=evGroup==="Events"?(state.feedMode==="tonight"?"#fcd34d":"#a5b4fc"):"#f9a8d4";
+    const header=showHeader?`<div class="group-header${idx===0?" first":""}"><span style="font-size:11px;font-weight:700;color:${isPlan?planHeaderColor:(isPlace?(meta.color):(GROUP_COLORS[evGroup]||"rgba(255,255,255,0.3)"))};text-transform:uppercase;letter-spacing:1.2px">${evGroup}</span><div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div><span style="font-size:10px;color:rgba(255,255,255,0.4);font-weight:600">${groupCount}</span></div>`:"";
     const searchText=(ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||"");
     const dateLabel=formatDate(ev.date);
     const isSoon=ev.date==="Today"||ev.date==="Tomorrow"||dateLabel==="Today"||dateLabel==="Tomorrow";
