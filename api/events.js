@@ -43,6 +43,9 @@ async function setCached(cacheKey, events) {
   } catch(e) { console.log("Cache write failed:", e.message); }
 }
 
+// Once SerpAPI reports google_events unsupported, skip further probes this invoke
+let GOOGLE_EVENTS_UNSUPPORTED = false;
+
 // Wrap any fetch with a timeout so slow APIs don't hold up results
 async function fetchWithTimeout(promise, ms = 3000) {
   const timeout = new Promise((_, reject) =>
@@ -63,9 +66,20 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "A ZIP or coordinates are required" });
   }
 
-  const userLat = lat ? parseFloat(lat) : null;
-  const userLng = lng ? parseFloat(lng) : null;
-  const hasCoords = userLat && userLng;
+  let userLat = lat ? parseFloat(lat) : null;
+  let userLng = lng ? parseFloat(lng) : null;
+  let hasCoords = !!(userLat && userLng);
+
+  // Server-side geocode when ZIP is present but client omitted coords
+  if (!hasCoords && hasZip) {
+    const geo = await geocodeZip(zip);
+    if (geo && geo.lat && geo.lng) {
+      userLat = geo.lat;
+      userLng = geo.lng;
+      hasCoords = true;
+      console.log(`Geocoded ZIP ${zip} -> ${userLat},${userLng}`);
+    }
+  }
 
   const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB = VB_ZIPS.includes(zip||"");
@@ -86,7 +100,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v14_${zip}${coordKey}`; // v6 = 12 serp queries // v2 = with working TM
+  const cacheKey = `events_v15_${zip}${coordKey}`; // v15 = server geocode + small-town expansion
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -95,7 +109,7 @@ export default async function handler(req, res) {
       cachedEvents = cached.filter(ev => {
         if (!ev.lat || !ev.lng) return true;
         const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
-        return dist <= 75;
+        return dist <= 100;
       });
     }
     return res.status(200).json({ events: cachedEvents, errors: [], fromCache: true });
@@ -124,27 +138,18 @@ export default async function handler(req, res) {
   const prefix3 = zip.slice(0,3);
   const stateName = (state||"").trim().toUpperCase() || stateMap[prefix2] || stateMap[prefix3] || "";
 
-  const [tmRes, serpRes, rapidRes, vbRes, phqRes, serp2Res,
-          serp3Res, serp4Res, serp5Res, serp6Res, serp7Res, serp8Res,
-          serp9Res, serp10Res, serp11Res, serp12Res, ebRes, serpNearRes, ninjaRes, usdaRes] = await Promise.allSettled([
-    fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng), 6000),
+  // google_events is currently unsupported on SerpAPI — try once, then fall back
+  // to a couple of working engines (google + google_maps) instead of 12 dead calls.
+  const [tmRes, serpRes, rapidRes, vbRes, phqRes, serpAltRes, serpMapsRes,
+          ebRes, ninjaRes, usdaRes] = await Promise.allSettled([
+    fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng, 50), 6000),
     fetchWithTimeout(fetchSerpAPI(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchRapidAPI(cityName, zip, stateName, userLat, userLng), 3000),
     isVB ? fetchWithTimeout(fetchVirginiaBeach(), 3000) : Promise.resolve([]),
     fetchWithTimeout(fetchPredictHQ(zip, userLat, userLng), 5000),
-    fetchWithTimeout(fetchSerpAPI2(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI3(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI4(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI5(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI6(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI7(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI8(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI9(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI10(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI11(cityName, zip, stateName, userLat, userLng), 3000),
-    fetchWithTimeout(fetchSerpAPI12(cityName, zip, stateName, userLat, userLng), 3000),
+    fetchWithTimeout(fetchSerpGoogleOrganic(cityName, zip, stateName, userLat, userLng), 4000),
+    fetchWithTimeout(fetchSerpMapsEvents(cityName, zip, stateName, userLat, userLng), 4000),
     fetchWithTimeout(fetchEventbrite(cityName, zip, stateName, userLat, userLng), 5000),
-    fetchWithTimeout(fetchSerpAPINearby(cityName, zip, stateName, userLat, userLng), 3000),
     fetchWithTimeout(fetchWebNinja(cityName, zip, stateName, userLat, userLng), 5000),
     fetchWithTimeout(fetchUSDAMarkets(cityName, zip, stateName, userLat, userLng), 5000),
   ]);
@@ -155,7 +160,11 @@ export default async function handler(req, res) {
   } else results.errors.push("Ticketmaster: " + tmRes.reason?.message);
 
   if (serpRes.status === "fulfilled") results.events.push(...serpRes.value);
-  else results.errors.push("SerpAPI: " + serpRes.reason?.message);
+  else {
+    const msg = serpRes.reason?.message || "failed";
+    if (/unsupported.*google_events/i.test(msg)) GOOGLE_EVENTS_UNSUPPORTED = true;
+    results.errors.push("SerpAPI: " + msg);
+  }
 
   if (rapidRes.status === "fulfilled") results.events.push(...rapidRes.value);
   else results.errors.push("RapidAPI: " + rapidRes.reason?.message);
@@ -166,44 +175,14 @@ export default async function handler(req, res) {
   if (phqRes.status === "fulfilled") results.events.push(...phqRes.value);
   else results.errors.push("PredictHQ: " + phqRes.reason?.message);
 
-  if (serp2Res.status === "fulfilled") results.events.push(...serp2Res.value);
-  else results.errors.push("Google Events 2: " + serp2Res.reason?.message);
+  if (serpAltRes.status === "fulfilled") results.events.push(...serpAltRes.value);
+  else results.errors.push("SerpGoogle: " + serpAltRes.reason?.message);
 
-  if (serp3Res.status === "fulfilled") results.events.push(...serp3Res.value);
-  else results.errors.push("Google Events 3: " + serp3Res.reason?.message);
-
-  if (serp4Res.status === "fulfilled") results.events.push(...serp4Res.value);
-  else results.errors.push("Google Events 4: " + serp4Res.reason?.message);
-
-  if (serp5Res.status === "fulfilled") results.events.push(...serp5Res.value);
-  else results.errors.push("Google Events 5: " + serp5Res.reason?.message);
-
-  if (serp6Res.status === "fulfilled") results.events.push(...serp6Res.value);
-  else results.errors.push("Google Events 6: " + serp6Res.reason?.message);
-
-  if (serp7Res.status === "fulfilled") results.events.push(...serp7Res.value);
-  else results.errors.push("Google Events 7: " + serp7Res.reason?.message);
-
-  if (serp8Res.status === "fulfilled") results.events.push(...serp8Res.value);
-  else results.errors.push("Google Events 8: " + serp8Res.reason?.message);
-
-  if (serp9Res.status === "fulfilled") results.events.push(...serp9Res.value);
-  else results.errors.push("Google Events 9: " + serp9Res.reason?.message);
-
-  if (serp10Res.status === "fulfilled") results.events.push(...serp10Res.value);
-  else results.errors.push("Google Events 10: " + serp10Res.reason?.message);
-
-  if (serp11Res.status === "fulfilled") results.events.push(...serp11Res.value);
-  else results.errors.push("Google Events 11: " + serp11Res.reason?.message);
-
-  if (serp12Res.status === "fulfilled") results.events.push(...serp12Res.value);
-  else results.errors.push("Google Events 12: " + serp12Res.reason?.message);
+  if (serpMapsRes.status === "fulfilled") results.events.push(...serpMapsRes.value);
+  else results.errors.push("SerpMaps: " + serpMapsRes.reason?.message);
 
   if (ebRes.status === "fulfilled") results.events.push(...ebRes.value);
   else results.errors.push("Eventbrite: " + ebRes.reason?.message);
-
-  if (serpNearRes.status === "fulfilled") results.events.push(...serpNearRes.value);
-  else results.errors.push("SerpNearby: " + serpNearRes.reason?.message);
 
   if (ninjaRes.status === "fulfilled") results.events.push(...ninjaRes.value);
   else results.errors.push("WebNinja: " + ninjaRes.reason?.message);
@@ -264,36 +243,74 @@ export default async function handler(req, res) {
   }
 
   // ── Filter out events too far away ──────────────────────────────────────────
+  let maxMiles = 75;
   if (hasCoords && results.events.length > 0) {
-    const MAX_MILES = 75;
     results.events = results.events.filter(ev => {
-      // Check by coordinates if available
       if (ev.lat && ev.lng) {
         const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
         ev.distanceMiles = Math.round(dist * 10) / 10;
-        return dist <= MAX_MILES;
+        return dist <= maxMiles;
       }
-      // Events without coords after geocoding attempt = likely bad data, reject
-      // unless the address clearly mentions the search city or state
-      const addr = (ev.address || ev.location || "").toLowerCase();
-      const searchCity = cityName.toLowerCase();
-      
-      // Keep if address mentions the search city
-      if (addr.includes(searchCity)) return true;
-      
-      // Keep if address is very short/generic (no city info to judge)
-      if (addr.length < 10) return true;
-      
       return true;
     });
   }
 
-  // ── Store in cache ──────────────────────────────────────────────────────────
-  if (results.events.length > 0) {
-    setCached(cacheKey, results.events).catch(()=>{});
+  // ── Small-town expansion: sparse results get a wider TM radius ──────────────
+  if (results.events.length < 12 && hasCoords) {
+    try {
+      console.log(`Small-town expansion: only ${results.events.length} events, widening TM to 100mi`);
+      const tmWide = await fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng, 100), 8000);
+      if (Array.isArray(tmWide) && tmWide.length) {
+        results.events.push(...tmWide);
+      }
+      // Optional nearby hub name queries via RapidAPI / organic when still sparse
+      if (results.events.length < 12) {
+        const hubs = NEARBY_HUBS[zip] || [];
+        for (const hub of hubs.slice(0, 3)) {
+          try {
+            const hubEvents = await fetchWithTimeout(
+              fetchSerpGoogleOrganic(hub, zip, stateName, userLat, userLng),
+              3500
+            );
+            if (Array.isArray(hubEvents)) results.events.push(...hubEvents);
+          } catch (e) {}
+          if (results.events.length >= 12) break;
+        }
+      }
+      // Re-dedupe
+      const seen2 = new Set();
+      results.events = results.events.filter(ev => {
+        const key = (ev.name || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
+        if (!key || seen2.has(key)) return false;
+        seen2.add(key);
+        return true;
+      });
+      // Widen distance filter to match expanded radius
+      maxMiles = 100;
+      results.events = results.events.filter(ev => {
+        if (ev.lat && ev.lng) {
+          const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
+          ev.distanceMiles = Math.round(dist * 10) / 10;
+          return dist <= maxMiles;
+        }
+        return true;
+      });
+      results.events.sort((a, b) => {
+        const distA = a.distanceMiles ?? 999;
+        const distB = b.distanceMiles ?? 999;
+        const bandA = distA < 10 ? 0 : distA < 25 ? 1 : distA < 50 ? 2 : 3;
+        const bandB = distB < 10 ? 0 : distB < 25 ? 1 : distB < 50 ? 2 : 3;
+        if (bandA !== bandB) return bandA - bandB;
+        if (!a.startDate) return 1;
+        if (!b.startDate) return -1;
+        return a.startDate.localeCompare(b.startDate);
+      });
+    } catch (e) {
+      console.log("Small-town expansion failed:", e.message);
+    }
   }
 
-  // Store in cache for next time
+  // ── Store in cache (skip empty so sparse towns aren't sticky-empty) ─────────
   if (results.events.length > 0) {
     setCached(cacheKey, results.events).catch(()=>{});
   }
@@ -302,20 +319,23 @@ export default async function handler(req, res) {
 }
 
 // ── Ticketmaster ──────────────────────────────────────────────────────────────
-async function fetchTicketmaster(zip, userLat, userLng) {
+async function fetchTicketmaster(zip, userLat, userLng, radiusMiles = 50) {
   if (!TM_KEY) return [];
-  const hasCoords = userLat && userLng;
+  const hasCoords = !!(userLat && userLng);
   const VB_ZIPS_TM = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB_TM = VB_ZIPS_TM.includes(zip);
+  const radius = radiusMiles || 50;
 
-  // Use actual GPS coordinates when available for more accurate results
+  // Prefer latlong; postalCode only if geocode failed / no coords
   let locationParam;
   if (hasCoords) {
-    locationParam = `latlong=${userLat},${userLng}&radius=50`;
+    locationParam = `latlong=${userLat},${userLng}&radius=${radius}`;
   } else if (isVB_TM) {
-    locationParam = `latlong=36.8529,-76.0&radius=60`;
+    locationParam = `latlong=36.8529,-76.0&radius=${Math.max(radius, 60)}`;
+  } else if (zip) {
+    locationParam = `postalCode=${zip}&radius=${radius}`;
   } else {
-    locationParam = `postalCode=${zip}&radius=50`;
+    return [];
   }
 
   const base = `https://app.ticketmaster.com/discovery/v2/events.json?apikey=${TM_KEY}&${locationParam}&unit=miles&countryCode=US&size=50&sort=date,asc`;
@@ -371,7 +391,7 @@ async function fetchTicketmaster(zip, userLat, userLng) {
 
 // ── SerpAPI ───────────────────────────────────────────────────────────────────
 async function fetchSerpAPIAroundCoords(cityName, zip, stateName, lat, lng) {
-  if(!SERP_KEY || !lat || !lng) return [];
+  if(!SERP_KEY || !lat || !lng || GOOGLE_EVENTS_UNSUPPORTED) return [];
   try {
     // Pure coordinate search: no city name at all. Best for counties/hamlets
     // whose name Google doesn't index as an events location.
@@ -543,7 +563,7 @@ function getNearbyZips(zip) {
 }
 
 async function fetchSerpAPINearby(cityName, zip, stateName, lat, lng) {
-  if(!SERP_KEY) return [];
+  if(!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   try {
     const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
     const serpLocation = `${cityName}, ${stateFullName2}, United States`;
@@ -581,27 +601,43 @@ async function fetchSerpAPINearby(cityName, zip, stateName, lat, lng) {
 }
 
 async function geocodeZip(zip) {
+  if (!zip || String(zip).length !== 5) return null;
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?postalcode=${zip}&country=us&format=json&limit=1`, {
-      headers: {"User-Agent": "BuzzFinderApp/1.0"}
-    });
+    const r = await fetch(`https://api.zippopotam.us/us/${zip}`);
+    if (!r.ok) return null;
     const d = await r.json();
-    if(d && d[0]) return {lat: parseFloat(d[0].lat), lng: parseFloat(d[0].lon)};
-  } catch(e) {}
+    const p = d.places && d.places[0];
+    if (p) return { lat: parseFloat(p.latitude), lng: parseFloat(p.longitude) };
+  } catch (e) {}
   return null;
 }
 
+// Known sparse small-town ZIPs → nearby hubs for optional expansion
+const NEARBY_HUBS = {
+  "16323": ["Oil City", "Meadville", "Titusville", "Erie"],
+  "16301": ["Franklin", "Meadville", "Titusville", "Erie"],
+  "16354": ["Oil City", "Franklin", "Meadville", "Erie"],
+  "16335": ["Erie", "Oil City", "Franklin"],
+};
+
 async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName = STATE_FULL_NAMES[stateName] || stateName;
-  const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName}` : cityName;
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName}, United States` : cityName;
   const query = encodeURIComponent(`events in ${cityName} ${stateName} ${zip||""}`);
   const locationParam = `&location=${encodeURIComponent(serpLocation)}`;
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
-  const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) {
+      GOOGLE_EVENTS_UNSUPPORTED = true;
+      console.log("google_events unsupported — skipping further google_events probes");
+      return [];
+    }
+    throw new Error(d.error);
+  }
+  return (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp_" + i + "_" + zip,
     name: ev.title || "Local Event",
     type: classifyByTitle(ev.title || ""),
@@ -618,7 +654,112 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
     lat: ev.gps_coordinates?.latitude || null,
     lng: ev.gps_coordinates?.longitude || null,
   }));
-  return results;
+}
+
+// SerpAPI engine=google organic results for "events near …" (works when google_events is dead)
+async function fetchSerpGoogleOrganic(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY) return [];
+  try {
+    const stateFull = STATE_FULL_NAMES[stateName] || stateName || "";
+    const where = [cityName, stateName, zip].filter(Boolean).join(" ");
+    const q = `events near ${where}`.trim();
+    const params = new URLSearchParams({
+      engine: "google",
+      q,
+      api_key: SERP_KEY,
+      hl: "en",
+      gl: "us",
+      num: "20",
+    });
+    if (stateFull && cityName && cityName.toLowerCase() !== "your area") {
+      params.set("location", `${cityName}, ${stateFull}, United States`);
+    }
+    const r = await fetch(`https://serpapi.com/search.json?${params}`);
+    const d = await r.json();
+    if (d.error) return [];
+    const organic = d.organic_results || [];
+    const attached = d.events_results || [];
+    const fromAttached = attached.slice(0, 15).map((ev, i) => ({
+      id: "serpgo_" + i + "_" + (zip || "x"),
+      name: ev.title || "Local Event",
+      type: classifyByTitle(ev.title || ""),
+      startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+      endDate: parseDate(ev.date?.start_date || ""),
+      location: ev.venue?.name || ev.address?.[0] || cityName,
+      address: Array.isArray(ev.address) ? ev.address.join(", ") : (ev.address || cityName),
+      description: ev.description || "",
+      familyRating: 4,
+      cost: ev.ticket_info?.[0]?.price || "See site",
+      url: ev.link || "",
+      source: "Google Search",
+      subEvents: [],
+      lat: ev.gps_coordinates?.latitude || null,
+      lng: ev.gps_coordinates?.longitude || null,
+    }));
+    const eventish = organic.filter(o => {
+      const t = `${o.title || ""} ${o.snippet || ""}`.toLowerCase();
+      return /event|festival|concert|show|fair|market|tournament|workshop|meetup|live music|comedy|theater|theatre/.test(t);
+    }).slice(0, 12).map((o, i) => ({
+      id: "serporg_" + i + "_" + (zip || "x"),
+      name: o.title || "Local Event",
+      type: classifyByTitle(o.title || ""),
+      startDate: parseDate(o.date || ""),
+      endDate: "",
+      location: cityName || "See site",
+      address: o.displayed_link || cityName || "",
+      description: (o.snippet || "").slice(0, 200),
+      familyRating: 4,
+      cost: "See site",
+      url: o.link || "",
+      source: "Google Search",
+      subEvents: [],
+      lat: null,
+      lng: null,
+    }));
+    return [...fromAttached, ...eventish];
+  } catch (e) { return []; }
+}
+
+// SerpAPI google_maps venues near the search area
+async function fetchSerpMapsEvents(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY) return [];
+  try {
+    const where = [cityName, stateName, zip].filter(Boolean).join(" ");
+    const q = `events venues near ${where}`.trim();
+    const params = new URLSearchParams({
+      engine: "google_maps",
+      type: "search",
+      q,
+      api_key: SERP_KEY,
+      hl: "en",
+    });
+    if (lat && lng) params.set("ll", `@${lat},${lng},12z`);
+    const r = await fetch(`https://serpapi.com/search.json?${params}`);
+    const d = await r.json();
+    if (d.error) return [];
+    const rows = d.local_results || [];
+    const list = Array.isArray(rows) ? rows : [];
+    return list.slice(0, 10).map((p, i) => {
+      const name = p.title || "Local venue";
+      return {
+        id: "serpmap_" + i + "_" + (zip || "x"),
+        name: name + " — events",
+        type: classifyByTitle(name),
+        startDate: "",
+        endDate: "",
+        location: name,
+        address: p.address || cityName || "",
+        description: (Array.isArray(p.types) ? p.types.join(" · ") : (p.type || "Venue")),
+        familyRating: p.rating != null ? Math.round(p.rating) : 4,
+        cost: "See site",
+        url: p.website || p.link || "",
+        source: "Google Maps",
+        subEvents: [],
+        lat: p.gps_coordinates?.latitude ?? null,
+        lng: p.gps_coordinates?.longitude ?? null,
+      };
+    });
+  } catch (e) { return []; }
 }
 
 // ── RapidAPI ──────────────────────────────────────────────────────────────────
@@ -738,6 +879,7 @@ async function fetchPredictHQ(zip, userLat, userLng) {
 
 // ── SerpAPI second query — weekend/nightlife focus ────────────────────────────
 async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -747,7 +889,10 @@ async function fetchSerpAPI2(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp2_" + i + "_" + zip,
     name: ev.title || "Local Event",
@@ -786,6 +931,7 @@ function classifyPHQ(category, title) {
 
 // ── SerpAPI Query 3 — free events focus ──────────────────────────────────────
 async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -795,7 +941,10 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp3_" + i + "_" + zip,
     name: ev.title || "Local Event",
@@ -818,6 +967,7 @@ async function fetchSerpAPI3(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 4 — concerts and live music focus ───────────────────────────
 async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -827,7 +977,10 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp4_" + i + "_" + zip,
     name: ev.title || "Local Event",
@@ -850,6 +1003,7 @@ async function fetchSerpAPI4(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 5 — festivals and outdoor events ────────────────────────────
 async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -859,7 +1013,10 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp5_" + i + "_" + zip,
     name: ev.title || "Local Event",
@@ -883,6 +1040,7 @@ async function fetchSerpAPI5(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 6 — community events ───────────────────────────────────────
 async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -892,7 +1050,10 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp6_" + i + "_" + zip,
     name: ev.title || "Local Event",
@@ -915,6 +1076,7 @@ async function fetchSerpAPI6(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 7 — kids and family events ──────────────────────────────────
 async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -924,7 +1086,10 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp7_" + i + "_" + zip,
     name: ev.title || "Family Event",
@@ -947,6 +1112,7 @@ async function fetchSerpAPI7(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 8 — nightlife and bars ─────────────────────────────────────
 async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -956,7 +1122,10 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp8_" + i + "_" + zip,
     name: ev.title || "Nightlife Event",
@@ -979,6 +1148,7 @@ async function fetchSerpAPI8(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 9 — things to do this weekend ─────────────────────────────
 async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -988,7 +1158,10 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp9_" + i + "_" + zip,
     name: ev.title || "Local Event",
@@ -1011,6 +1184,7 @@ async function fetchSerpAPI9(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 10 — outdoor and nature events ──────────────────────────────
 async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -1020,7 +1194,10 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp10_" + i + "_" + zip,
     name: ev.title || "Outdoor Event",
@@ -1043,6 +1220,7 @@ async function fetchSerpAPI10(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 11 — food and farmers market events ────────────────────────
 async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -1052,7 +1230,10 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp11_" + i + "_" + zip,
     name: ev.title || "Food Event",
@@ -1075,6 +1256,7 @@ async function fetchSerpAPI11(cityName, zip, stateName, lat, lng) {
 
 // ── SerpAPI Query 12 — arts music theater performances ───────────────────────
 async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
+  if (!SERP_KEY || GOOGLE_EVENTS_UNSUPPORTED) return [];
   const stateFullName2 = STATE_FULL_NAMES[stateName] || stateName || "";
   const serpLocation = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}, United States` : cityName;
   const location = stateName && cityName !== "your area" ? `${cityName}, ${stateFullName2}` : cityName;
@@ -1084,7 +1266,10 @@ async function fetchSerpAPI12(cityName, zip, stateName, lat, lng) {
   const url = `https://serpapi.com/search.json?engine=google_events&q=${query}&api_key=${SERP_KEY}&hl=en&gl=us${locationParam}`;
   const r = await fetch(url);
   const d = await r.json();
-  if (d.error) throw new Error(d.error);
+  if (d.error) {
+    if (/unsupported/i.test(String(d.error))) { GOOGLE_EVENTS_UNSUPPORTED = true; return []; }
+    throw new Error(d.error);
+  }
   const results = (d.events_results || []).slice(0, 25).map((ev, i) => ({
     id: "serp12_" + i + "_" + zip,
     name: ev.title || "Arts Event",

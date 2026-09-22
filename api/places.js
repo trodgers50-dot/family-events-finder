@@ -83,10 +83,37 @@ function calcDistance(lat1, lon1, lat2, lon2) {
 }
 
 function classifyPlace(title, types) {
-  const t = `${title || ""} ${(Array.isArray(types) ? types.join(" ") : (types || ""))}`.toLowerCase();
+  const typeList = Array.isArray(types) ? types : (types ? [types] : []);
+  const typeStr = typeList.join(" ").toLowerCase();
+  const titleStr = (title || "").toLowerCase();
+  const t = `${titleStr} ${typeStr}`;
+
+  // Prefer SerpAPI type field when it clearly maps to a category
+  const TYPE_MAP = [
+    [["brewery", "beer garden"], "Brewery"],
+    [["museum", "art gallery", "art museum", "history museum"], "Arts"],
+    [["movie theater", "movie theatre", "performing arts theater", "amphitheatre", "amphitheater"], "Arts"],
+    [["park", "national park", "state park", "hiking area", "tourist attraction", "zoo", "aquarium", "campground"], "Outdoor"],
+    [["bowling alley", "amusement center", "amusement park", "trampoline park", "arcade", "escape room"], "Kids"],
+    [["gym", "sports complex", "golf course", "stadium", "athletic field"], "Sports"],
+    [["bar", "night club", "nightclub", "cocktail bar", "pub"], "Nightlife"],
+    [["restaurant", "cafe", "coffee shop", "bakery", "pizza restaurant"], "Food"],
+    [["winery", "vineyard"], "Brewery"],
+    [["farmers market", "market"], "Market"],
+    [["library", "community center", "city hall"], "Community"],
+  ];
+  for (const [keys, label] of TYPE_MAP) {
+    if (typeList.some(tp => keys.includes(String(tp).toLowerCase()))) return label;
+  }
+
+  // Distributors / grocery / wholesale are NOT breweries
+  if (/beverage corporation|beverage co|distributor|wholesale|grocery|supermarket|liquor store|convenience store|bottling/.test(t)) {
+    return "Food";
+  }
   if (t.includes("escape") || t.includes("trampoline") || t.includes("arcade") || t.includes("bowling") || t.includes("mini golf") || t.includes("laser tag") || t.includes("go-kart") || t.includes("family entertainment") || t.includes("amusement") || t.includes("kids") || t.includes("children")) return "Kids";
-  if (t.includes("brewery") || t.includes("brewing") || t.includes("taproom") || t.includes("beer")) return "Brewery";
-  if (t.includes("museum") || t.includes("gallery") || t.includes("art") || t.includes("theater") || t.includes("theatre") || t.includes("exhibit")) return "Arts";
+  // Brewery only if title/type looks like a real brewery, not "beer" alone in a grocery name
+  if (/brewery|brewing|taproom|tap house|winery|vineyard/.test(t)) return "Brewery";
+  if (t.includes("museum") || t.includes("gallery") || t.includes("theater") || t.includes("theatre") || t.includes("exhibit")) return "Arts";
   if (t.includes("kayak") || t.includes("outdoor") || t.includes("adventure") || t.includes("park") || t.includes("trail") || t.includes("hike") || t.includes("nature") || t.includes("beach") || t.includes("zoo") || t.includes("aquarium")) return "Outdoor";
   if (t.includes("sport") || t.includes("gym") || t.includes("fitness") || t.includes("golf") || t.includes("climb")) return "Sports";
   if (t.includes("bar") || t.includes("nightclub") || t.includes("lounge") || t.includes("nightlife") || t.includes("comedy")) return "Nightlife";
@@ -113,7 +140,7 @@ function formatHours(p) {
 function mapLocalResult(p, i, zip, queryHint) {
   const name = p.title || p.name || "Local place";
   const types = p.types || (p.type ? [p.type] : []);
-  const type = classifyPlace(name, types.length ? types : queryHint);
+  const type = classifyPlace(name, types.length ? types : (p.type ? [p.type] : queryHint));
   const lat = p.gps_coordinates?.latitude ?? p.gps_coordinates?.lat ?? null;
   const lng = p.gps_coordinates?.longitude ?? p.gps_coordinates?.lng ?? null;
   const address = p.address || "";
@@ -164,6 +191,19 @@ async function fetchMapsQuery(q, llParam, zip) {
   return list.slice(0, 12).map((p, i) => mapLocalResult(p, i, zip, q));
 }
 
+
+async function geocodeZip(zip) {
+  if (!zip || String(zip).length !== 5) return null;
+  try {
+    const r = await fetch(`https://api.zippopotam.us/us/${zip}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    const p = d.places && d.places[0];
+    if (p) return { lat: parseFloat(p.latitude), lng: parseFloat(p.longitude) };
+  } catch (e) {}
+  return null;
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -183,9 +223,19 @@ export default async function handler(req, res) {
     });
   }
 
-  const userLat = lat ? parseFloat(lat) : null;
-  const userLng = lng ? parseFloat(lng) : null;
-  const hasCoords = !!(userLat && userLng);
+  let userLat = lat ? parseFloat(lat) : null;
+  let userLng = lng ? parseFloat(lng) : null;
+  let hasCoords = !!(userLat && userLng);
+
+  if (!hasCoords && hasZip) {
+    const geo = await geocodeZip(zip);
+    if (geo && geo.lat && geo.lng) {
+      userLat = geo.lat;
+      userLng = geo.lng;
+      hasCoords = true;
+      console.log(`Places geocoded ZIP ${zip} -> ${userLat},${userLng}`);
+    }
+  }
 
   const passedCity = (city || "").trim();
   const prefix2 = hasZip ? String(zip).slice(0, 2) : "";
@@ -202,14 +252,14 @@ export default async function handler(req, res) {
   const coordKey = hasCoords
     ? `_${Math.round(userLat * 10) / 10}_${Math.round(userLng * 10) / 10}`
     : "";
-  const cacheKey = `places_v1_${zip || "coords"}${coordKey}`;
+  const cacheKey = `places_v2_${zip || "coords"}${coordKey}`;
   const cached = await getCached(cacheKey);
   if (cached) {
     let places = Array.isArray(cached) ? cached : [];
     if (hasCoords) {
       places = places.filter(p => {
         if (!p.lat || !p.lng) return true;
-        return calcDistance(userLat, userLng, parseFloat(p.lat), parseFloat(p.lng)) <= 75;
+        return calcDistance(userLat, userLng, parseFloat(p.lat), parseFloat(p.lng)) <= 120;
       });
     }
     return res.status(200).json({ places, errors: [], fromCache: true });
@@ -248,13 +298,53 @@ export default async function handler(req, res) {
     return true;
   });
 
+  let maxDist = 75;
   if (hasCoords) {
     results.places = results.places.map(p => ({
       ...p,
       distanceMiles: p.lat && p.lng
         ? calcDistance(userLat, userLng, parseFloat(p.lat), parseFloat(p.lng))
         : null,
-    }));
+    })).filter(p => p.distanceMiles == null || p.distanceMiles <= maxDist);
+  }
+
+  // Sparse small-town expansion: broader queries + wider radius
+  if (results.places.length < 20) {
+    const broader = [
+      `park near ${near}`,
+      `museum near ${near}`,
+      `attraction near ${near}`,
+      `bowling near ${near}`,
+      `movie theater near ${near}`,
+      `winery near ${near}`,
+      `things to do near ${near}`,
+    ];
+    const llWide = hasCoords ? `@${userLat},${userLng},11z` : llParam;
+    const more = await Promise.allSettled(
+      broader.map(q => fetchWithTimeout(fetchMapsQuery(q, llWide, zip || ""), 4500))
+    );
+    more.forEach((s) => {
+      if (s.status === "fulfilled") results.places.push(...s.value);
+    });
+    const seen2 = new Set();
+    results.places = results.places.filter(p => {
+      const key = `${(p.name || "").toLowerCase()}|${(p.address || "").toLowerCase()}`;
+      if (seen2.has(key)) return false;
+      seen2.add(key);
+      return true;
+    });
+    maxDist = 120;
+    if (hasCoords) {
+      results.places = results.places.map(p => ({
+        ...p,
+        distanceMiles: p.lat && p.lng
+          ? calcDistance(userLat, userLng, parseFloat(p.lat), parseFloat(p.lng))
+          : null,
+      })).filter(p => p.distanceMiles == null || p.distanceMiles <= maxDist);
+    }
+  }
+
+  if (hasCoords) {
     results.places.sort((a, b) => {
       const ra = a.rating != null ? a.rating : -1;
       const rb = b.rating != null ? b.rating : -1;
@@ -269,6 +359,8 @@ export default async function handler(req, res) {
     results.places.sort((a, b) => (b.rating || 0) - (a.rating || 0));
   }
 
-  await setCached(cacheKey, results.places);
+  if (results.places.length > 0) {
+    await setCached(cacheKey, results.places);
+  }
   return res.status(200).json(results);
 }

@@ -3261,6 +3261,16 @@ async function getCityCoords(city, state, zip) {
       if(d&&d[0]) return {lat:parseFloat(d[0].lat), lng:parseFloat(d[0].lon)};
     }
   } catch(e){}
+  // Network geocode failed — fall back to hardcoded CITY_COORDS (Franklin PA etc.)
+  try{
+    const keys=[];
+    if(city && state) keys.push(`${String(city).toLowerCase()} ${String(state).toLowerCase()}`);
+    if(city) keys.push(String(city).toLowerCase());
+    for(const k of keys){
+      const pair = CITY_COORDS[k];
+      if(pair && pair.length===2) return {lat:pair[0], lng:pair[1]};
+    }
+  }catch(e){}
   return null;
 }
 
@@ -3396,6 +3406,14 @@ const merged=[...submittedEvents,...filteredLive];
       showToast(fromCache?`⚡ ${liveEvents.length} events loaded instantly`:`✓ ${liveEvents.length} live events loaded`);
     }else{
       setState({events:submittedEvents||[],loading:false,liveLoading:false,liveData:false});
+      // Subtle hint: sparse towns often have places even when ticketed events are thin
+      if(!(submittedEvents&&submittedEvents.length) && state.feedMode==="events"){
+        setTimeout(()=>{
+          try{
+            if(typeof showToast==="function") showToast("Few events here — try Things to do nearby");
+          }catch(e){}
+        }, 600);
+      }
     }
   }catch(e){
     console.log("Live fetch failed:",e.message,e);
