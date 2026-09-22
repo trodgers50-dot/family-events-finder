@@ -100,7 +100,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v17_${zip}${coordKey}`; // v17 = events = ticketed shows; bars live in /api/places
+  const cacheKey = `events_v18_${zip}${coordKey}`; // v18 = tighter local radius; hubs before far cities
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -246,41 +246,78 @@ export default async function handler(req, res) {
   }
 
   // ── Filter out events too far away ──────────────────────────────────────────
-  let maxMiles = 75;
-  if (hasCoords && results.events.length > 0) {
-    results.events = results.events.filter(ev => {
+  // Keep the circle tight so Franklin PA doesn't fill with Youngstown (~1hr) over Oil City.
+  let maxMiles = 45;
+  function annotateDistance(list) {
+    if (!hasCoords) return list;
+    return list.map(ev => {
+      if (ev.lat && ev.lng) {
+        const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
+        return { ...ev, distanceMiles: Math.round(dist * 10) / 10 };
+      }
+      return ev;
+    });
+  }
+  function withinMax(list, miles) {
+    return list.filter(ev => {
+      if (ev.lat && ev.lng && ev.distanceMiles != null) return ev.distanceMiles <= miles;
       if (ev.lat && ev.lng) {
         const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
         ev.distanceMiles = Math.round(dist * 10) / 10;
-        return dist <= maxMiles;
+        return dist <= miles;
       }
-      return true;
+      // No coords: keep only if address/location mentions search city or a known nearby hub
+      const hubs = (NEARBY_HUBS[zip] || []).concat([cityName]).filter(Boolean);
+      const blob = `${ev.location || ""} ${ev.address || ""} ${ev.name || ""}`.toLowerCase();
+      if (hubs.some(h => h && blob.includes(String(h).toLowerCase()))) return true;
+      // Drop unknown far venues (often big-city Ticketmaster spill without local address)
+      return false;
+    });
+  }
+  function sortByDistanceThenDate(list) {
+    return list.sort((a, b) => {
+      const distA = a.distanceMiles != null ? a.distanceMiles : 999;
+      const distB = b.distanceMiles != null ? b.distanceMiles : 999;
+      // Strict distance first (not coarse bands) so 12mi always beats 55mi
+      if (Math.abs(distA - distB) > 0.5) return distA - distB;
+      if (!a.startDate) return 1;
+      if (!b.startDate) return -1;
+      return a.startDate.localeCompare(b.startDate);
     });
   }
 
-  // ── Small-town expansion: sparse results get a wider TM radius ──────────────
+  if (hasCoords && results.events.length > 0) {
+    results.events = annotateDistance(results.events);
+    results.events = withinMax(results.events, maxMiles);
+    sortByDistanceThenDate(results.events);
+  }
+
+  // ── Small-town expansion: nearby hubs first, never leap to distant metros ───
   if (results.events.length < 12 && hasCoords) {
     try {
-      console.log(`Small-town expansion: only ${results.events.length} events, widening TM to 100mi`);
-      const tmWide = await fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng, 100), 8000);
-      if (Array.isArray(tmWide) && tmWide.length) {
-        results.events.push(...tmWide);
+      const hubs = NEARBY_HUBS[zip] || [];
+      console.log(`Small-town expansion: only ${results.events.length} events; hubs=${hubs.slice(0,4).join(",") || "none"} (cap ${maxMiles}mi)`);
+
+      // 1) Named hub searches (Oil City / Titusville / Meadville) — local culture, not Youngstown
+      for (const hub of hubs.slice(0, 4)) {
+        try {
+          const hubEvents = await fetchWithTimeout(
+            fetchSerpGoogleOrganic(hub, zip, stateName, userLat, userLng),
+            3500
+          );
+          if (Array.isArray(hubEvents)) results.events.push(...hubEvents);
+        } catch (e) {}
+        // Also try Ticketmaster around hub city via organic city name isn't TM —
+        // slight TM widen only to 45mi (not 100) after hubs
       }
-      // Optional nearby hub name queries via RapidAPI / organic when still sparse
+
+      // 2) Mild TM widen only to local driving distance — NOT 100mi metro leaps
       if (results.events.length < 12) {
-        const hubs = NEARBY_HUBS[zip] || [];
-        for (const hub of hubs.slice(0, 3)) {
-          try {
-            const hubEvents = await fetchWithTimeout(
-              fetchSerpGoogleOrganic(hub, zip, stateName, userLat, userLng),
-              3500
-            );
-            if (Array.isArray(hubEvents)) results.events.push(...hubEvents);
-          } catch (e) {}
-          if (results.events.length >= 12) break;
-        }
+        const tmWide = await fetchWithTimeout(fetchTicketmaster(zip, userLat, userLng, 45), 8000);
+        if (Array.isArray(tmWide) && tmWide.length) results.events.push(...tmWide);
       }
-      // Re-dedupe
+
+      // Re-dedupe + ticketed filter
       const seen2 = new Set();
       results.events = results.events.filter(ev => {
         const key = (ev.name || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
@@ -289,26 +326,11 @@ export default async function handler(req, res) {
         return true;
       });
       results.events = results.events.filter(keepAsEvent);
-      // Widen distance filter to match expanded radius
-      maxMiles = 100;
-      results.events = results.events.filter(ev => {
-        if (ev.lat && ev.lng) {
-          const dist = calcDistance(userLat, userLng, parseFloat(ev.lat), parseFloat(ev.lng));
-          ev.distanceMiles = Math.round(dist * 10) / 10;
-          return dist <= maxMiles;
-        }
-        return true;
-      });
-      results.events.sort((a, b) => {
-        const distA = a.distanceMiles ?? 999;
-        const distB = b.distanceMiles ?? 999;
-        const bandA = distA < 10 ? 0 : distA < 25 ? 1 : distA < 50 ? 2 : 3;
-        const bandB = distB < 10 ? 0 : distB < 25 ? 1 : distB < 50 ? 2 : 3;
-        if (bandA !== bandB) return bandA - bandB;
-        if (!a.startDate) return 1;
-        if (!b.startDate) return -1;
-        return a.startDate.localeCompare(b.startDate);
-      });
+      results.events = annotateDistance(results.events);
+      // Hard cap stays ~45–50mi (Oil City/Titusville in; Youngstown out)
+      maxMiles = 50;
+      results.events = withinMax(results.events, maxMiles);
+      sortByDistanceThenDate(results.events);
     } catch (e) {
       console.log("Small-town expansion failed:", e.message);
     }
@@ -618,8 +640,8 @@ async function geocodeZip(zip) {
 
 // Known sparse small-town ZIPs → nearby hubs for optional expansion
 const NEARBY_HUBS = {
-  "16323": ["Oil City", "Meadville", "Titusville", "Erie"],
-  "16301": ["Franklin", "Meadville", "Titusville", "Erie"],
+  "16323": ["Oil City", "Titusville", "Meadville", "Clarion"],
+  "16301": ["Franklin", "Titusville", "Meadville", "Clarion"],
   "16354": ["Oil City", "Franklin", "Meadville", "Erie"],
   "16335": ["Erie", "Oil City", "Franklin"],
 };
