@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
-<meta name="bf-build" content="events-ticketed-v1">
+<meta name="bf-build" content="saves-share-v1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -90,6 +90,24 @@ input,textarea,select{font-family:inherit;}
 .chip{padding:7px 13px;border-radius:999px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;min-height:34px;transition:background .15s,border-color .15s,color .15s;}
 .group-header{display:flex;align-items:center;gap:8px;padding:18px 4px 10px;}
 .group-header.first{padding-top:4px;}
+
+/* Saved plan floating bar + sheet */
+@keyframes planSheetUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+.plan-fab{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:1600;display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:999px;background:linear-gradient(135deg,rgba(99,102,241,0.92),rgba(236,72,153,0.88));color:#fff;font-size:14px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.18);box-shadow:0 8px 28px rgba(99,102,241,0.45);letter-spacing:-0.2px;white-space:nowrap;min-height:48px}
+.plan-fab:hover{filter:brightness(1.06)}
+.plan-fab .plan-fab-count{background:rgba(0,0,0,0.25);padding:2px 9px;border-radius:999px;font-size:12px;font-weight:750}
+.plan-add-btn{font-size:10px;font-weight:700;cursor:pointer;padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.45);min-height:28px;display:flex;align-items:center;justify-content:center;white-space:nowrap;letter-spacing:0.2px;user-select:none}
+.plan-add-btn.on{background:rgba(99,102,241,0.22);border-color:rgba(99,102,241,0.45);color:#c7d2fe}
+.plan-sheet-overlay{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.72);backdrop-filter:blur(10px);display:flex;align-items:flex-end;justify-content:center;padding:0}
+.plan-sheet{width:100%;max-width:480px;max-height:88vh;background:#13131f;border-radius:22px 22px 0 0;border:1px solid rgba(255,255,255,0.1);border-bottom:none;display:flex;flex-direction:column;animation:planSheetUp .28s ease;box-shadow:0 -12px 40px rgba(0,0,0,0.5)}
+.plan-sheet-head{display:flex;align-items:center;gap:12px;padding:18px 18px 12px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
+.plan-sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;padding:8px 14px 12px;flex:1}
+.plan-sheet-item{display:flex;align-items:flex-start;gap:10px;padding:12px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.03);margin-bottom:8px}
+.plan-sheet-foot{padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));border-top:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+.plan-sheet-primary{padding:14px;border-radius:14px;background:linear-gradient(135deg,#6366f1,#ec4899);color:#fff;font-size:15px;font-weight:700;text-align:center;cursor:pointer;border:none;min-height:48px}
+.plan-sheet-secondary{padding:12px;border-radius:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:13px;font-weight:650;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.08);min-height:44px}
+.home-plan-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.28);color:#c7d2fe;font-size:12px;font-weight:650;cursor:pointer}
+
 </style>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -3607,6 +3625,7 @@ let state={
   feedMode:"events", // "events" | "places" | "tonight" | "weekend"
   places:[],placesLoading:false,placesLive:false,placesFromCache:false,placesError:"",
   planItems:[],planLoading:false,planLens:"all",
+  savedPlan:[],planSheetOpen:false,sharedPlan:null,sharedSheetOpen:false,
 };
 
 function setState(u){Object.assign(state,u);render();}
@@ -3614,6 +3633,261 @@ window.showLegal=function(screen){setState({legalScreen:screen});};
 window.hideLegal=function(){setState({legalScreen:null});};
 function showToast(msg){setState({toast:msg});setTimeout(()=>setState({toast:""}),2500);}
 function m2(t){return TYPE_META[t]||{color:"#94a3b8",icon:"●"};}
+
+// ── Saved plan (localStorage) ─────────────────────────────────────────────────
+const SAVED_PLAN_KEY="buzz_saved_plan";
+const SAVED_PLAN_CAP=12;
+function loadSavedPlan(){
+  try{
+    const raw=localStorage.getItem(SAVED_PLAN_KEY);
+    if(!raw)return[];
+    const arr=JSON.parse(raw);
+    return Array.isArray(arr)?arr.filter(x=>x&&x.id).slice(0,SAVED_PLAN_CAP):[];
+  }catch(e){return[];}
+}
+function persistSavedPlan(arr){
+  try{localStorage.setItem(SAVED_PLAN_KEY,JSON.stringify(arr));}catch(e){}
+}
+function slimPlanItem(it,forceKind){
+  const kind=forceKind||(it.kind==="place"?"place":"event");
+  const snap={id:String(it.id),name:it.name||"",kind};
+  ["type","date","startDate","location","address","url","cost","reason","hours","rating","photo"].forEach(f=>{
+    if(it[f]!=null&&it[f]!=="")snap[f]=it[f];
+  });
+  return snap;
+}
+function isInSavedPlan(id){return state.savedPlan.some(x=>String(x.id)===String(id));}
+function findItemById(id){
+  const sid=String(id);
+  return (state.planItems||[]).find(x=>String(x.id)===sid)
+    || (state.events||[]).find(x=>String(x.id)===sid)
+    || (state.places||[]).find(x=>String(x.id)===sid)
+    || (state.savedPlan||[]).find(x=>String(x.id)===sid)
+    || null;
+}
+function toggleSavedPlan(item,forceKind){
+  if(!item||item.id==null)return;
+  const id=String(item.id);
+  const exists=state.savedPlan.some(x=>String(x.id)===id);
+  let next;
+  if(exists){
+    next=state.savedPlan.filter(x=>String(x.id)!==id);
+    persistSavedPlan(next);
+    state.savedPlan=next;
+    if(!next.length)state.planSheetOpen=false;
+    showToast("Removed from plan");
+  }else{
+    if(state.savedPlan.length>=SAVED_PLAN_CAP){showToast("Plan is full (12 max)");return;}
+    next=[...state.savedPlan,slimPlanItem(item,forceKind)];
+    persistSavedPlan(next);
+    state.savedPlan=next;
+    showToast("Added to plan");
+  }
+}
+function clearSavedPlan(){
+  persistSavedPlan([]);
+  state.savedPlan=[];
+  showToast("Plan cleared");
+}
+function encodePlanPayload(items){
+  const slim=items.map(it=>{
+    const o={id:String(it.id),name:it.name||"",kind:it.kind==="place"?"place":"event"};
+    ["type","date","startDate","location","address","url","cost","reason","hours","rating"].forEach(f=>{
+      if(it[f]!=null&&it[f]!=="")o[f]=it[f];
+    });
+    return o;
+  });
+  const json=JSON.stringify(slim);
+  return btoa(unescape(encodeURIComponent(json))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function decodePlanPayload(b64){
+  try{
+    let s=String(b64).replace(/-/g,"+").replace(/_/g,"/");
+    while(s.length%4)s+="=";
+    const json=decodeURIComponent(escape(atob(s)));
+    const arr=JSON.parse(json);
+    return Array.isArray(arr)?arr.filter(x=>x&&x.id&&x.name):null;
+  }catch(e){return null;}
+}
+function buildPlanShareText(items,link){
+  const lines=["My Buzzfinder plan"];
+  items.forEach((it,i)=>{
+    const isPlace=it.kind==="place";
+    const mid=isPlace?(it.type||"Nightlife"):(formatDate(it.date||it.startDate)||it.type||"");
+    lines.push(`${i+1}. ${it.name}${mid?` — ${mid}`:""} (${isPlace?"Place":"Event"})`);
+  });
+  if(link){lines.push("");lines.push(link);}
+  return lines.join("\n");
+}
+function buildPlanShareLink(items){
+  let payload=encodePlanPayload(items);
+  let link="https://buzzfinder.app/?plan="+payload;
+  if(link.length<=2000)return link;
+  // Strip urls to shrink
+  const noUrl=items.map(it=>{const o={...it};delete o.url;delete o.photo;delete o.address;return o;});
+  payload=encodePlanPayload(noUrl);
+  link="https://buzzfinder.app/?plan="+payload;
+  if(link.length<=2000)return link;
+  return null;
+}
+async function shareSavedPlan(){
+  const items=state.savedPlan;
+  if(!items.length){showToast("Plan is empty");return;}
+  const link=buildPlanShareLink(items);
+  const txt=buildPlanShareText(items,link);
+  if(!link){
+    if(navigator.share){try{await navigator.share({title:"My Buzzfinder plan",text:txt});}catch(e){}}
+    else{try{await navigator.clipboard.writeText(txt);}catch(e){}}
+    showToast("Link too long — shared text only");
+    return;
+  }
+  if(navigator.share){
+    try{await navigator.share({title:"My Buzzfinder plan",text:txt,url:link});}catch(e){}
+  }else{
+    try{await navigator.clipboard.writeText(txt);showToast("📋 Plan copied!");}catch(e){showToast("Could not copy");}
+  }
+}
+async function copySavedPlanLink(){
+  const items=state.savedPlan;
+  if(!items.length){showToast("Plan is empty");return;}
+  const link=buildPlanShareLink(items);
+  if(!link){
+    const txt=buildPlanShareText(items,null);
+    try{await navigator.clipboard.writeText(txt);showToast("Link too long — copied text");}catch(e){showToast("Could not copy");}
+    return;
+  }
+  try{await navigator.clipboard.writeText(link);showToast("🔗 Link copied!");}catch(e){
+    try{await navigator.clipboard.writeText(buildPlanShareText(items,link));showToast("📋 Plan copied!");}catch(e2){showToast("Could not copy");}
+  }
+}
+function saveSharedToMyPlan(){
+  const shared=state.sharedPlan||[];
+  if(!shared.length)return;
+  let next=[...state.savedPlan];
+  let added=0;
+  for(const it of shared){
+    if(next.length>=SAVED_PLAN_CAP)break;
+    if(next.some(x=>String(x.id)===String(it.id)))continue;
+    next.push(slimPlanItem(it));
+    added++;
+  }
+  persistSavedPlan(next);
+  state.savedPlan=next;
+  state.sharedSheetOpen=false;
+  state.sharedPlan=null;
+  state.planSheetOpen=true;
+  showToast(added?`Saved ${added} to my plan`:"Already in your plan");
+}
+function renderPlanFab(){
+  const n=state.savedPlan.length;
+  if(!n||state.planSheetOpen||state.sharedSheetOpen)return"";
+  return`<div id="my-plan-fab" class="plan-fab" role="button">📋 My plan · <span class="plan-fab-count">${n}</span></div>`;
+}
+function planItemMetaLine(it){
+  const isPlace=it.kind==="place";
+  if(isPlace)return san(it.type||"Place");
+  return san(formatDate(it.date||it.startDate)||it.type||"Event");
+}
+function renderPlanSheet(){
+  const isShared=!!state.sharedSheetOpen;
+  const items=isShared?(state.sharedPlan||[]):state.savedPlan;
+  const title=isShared?"Shared plan":"My plan";
+  const list=items.length?items.map((it,idx)=>{
+    const isPlace=it.kind==="place";
+    const chipBg=isPlace?"rgba(236,72,153,0.14)":"rgba(99,102,241,0.16)";
+    const chipFg=isPlace?"#f9a8d4":"#c7d2fe";
+    return`<div class="plan-sheet-item">
+      <div style="width:22px;color:rgba(255,255,255,0.35);font-size:12px;font-weight:700;padding-top:2px">${idx+1}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:650;color:#f8fafc;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${san(it.name)}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;background:${chipBg};color:${chipFg}">${isPlace?"Place":"Event"}</span>
+          <span style="font-size:11px;color:rgba(255,255,255,0.45)">${planItemMetaLine(it)}</span>
+          ${it.location||it.address?`<span style="font-size:11px;color:rgba(255,255,255,0.35);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${san(it.location||it.address)}</span>`:""}
+        </div>
+      </div>
+      ${!isShared?`<div class="plan-remove-btn" data-id="${san(String(it.id))}" style="padding:6px 10px;border-radius:8px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fca5a5;font-size:11px;font-weight:650;cursor:pointer;flex-shrink:0">Remove</div>`:""}
+    </div>`;
+  }).join(""):`<div style="text-align:center;padding:36px 16px"><div style="font-size:28px;margin-bottom:10px;opacity:0.5">📋</div><div style="font-size:14px;font-weight:650;color:#f1f5f9;margin-bottom:6px">${isShared?"Nothing in this shared plan":"Your plan is empty"}</div><div style="font-size:12px;color:rgba(255,255,255,0.4)">Add picks with + Plan on any card</div></div>`;
+  const foot=isShared?`
+    <div id="shared-save-btn" class="plan-sheet-primary">Save to my plan</div>
+    <div id="shared-close-btn" class="plan-sheet-secondary">Close</div>
+  `:`
+    <div id="plan-share-btn" class="plan-sheet-primary" style="${items.length?"":"opacity:0.4;pointer-events:none"}">Share plan</div>
+    <div style="display:flex;gap:8px">
+      <div id="plan-copy-btn" class="plan-sheet-secondary" style="flex:1;${items.length?"":"opacity:0.4;pointer-events:none"}">Copy link</div>
+      <div id="plan-clear-btn" class="plan-sheet-secondary" style="flex:1;${items.length?"":"opacity:0.4;pointer-events:none"};color:#fca5a5;border-color:rgba(239,68,68,0.2)">Clear all</div>
+    </div>
+  `;
+  return`<div id="plan-sheet-overlay" class="plan-sheet-overlay">
+    <div class="plan-sheet" id="plan-sheet-inner">
+      <div class="plan-sheet-head">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:18px;font-weight:750;color:#f8fafc;letter-spacing:-0.3px">${title}</div>
+          <div style="font-size:12px;color:rgba(255,255,255,0.42);margin-top:2px">${items.length} item${items.length===1?"":"s"}</div>
+        </div>
+        <div id="plan-sheet-close" style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:rgba(255,255,255,0.65)">✕</div>
+      </div>
+      <div class="plan-sheet-body">${list}</div>
+      <div class="plan-sheet-foot">${foot}</div>
+    </div>
+  </div>`;
+}
+function syncPlanSheet(){
+  const want=state.planSheetOpen||state.sharedSheetOpen;
+  let el=document.getElementById("plan-sheet-overlay");
+  if(!want){if(el)el.remove();return;}
+  const html=renderPlanSheet();
+  if(el){el.outerHTML=html;}
+  else{document.body.insertAdjacentHTML("beforeend",html);}
+  bindPlanSheetEvents();
+}
+function bindPlanSheetEvents(){
+  const overlay=document.getElementById("plan-sheet-overlay");
+  if(!overlay)return;
+  const close=()=>{state.planSheetOpen=false;state.sharedSheetOpen=false;state.sharedPlan=null;render();};
+  const closeBtn=document.getElementById("plan-sheet-close");
+  if(closeBtn)closeBtn.addEventListener("click",close);
+  overlay.addEventListener("click",e=>{if(e.target===overlay)close();});
+  const inner=document.getElementById("plan-sheet-inner");
+  if(inner)inner.addEventListener("click",e=>e.stopPropagation());
+  document.querySelectorAll(".plan-remove-btn").forEach(el=>el.addEventListener("click",e=>{
+    e.stopPropagation();
+    const it=state.savedPlan.find(x=>String(x.id)===String(el.dataset.id));
+    if(it)toggleSavedPlan(it);
+    else{
+      const next=state.savedPlan.filter(x=>String(x.id)!==String(el.dataset.id));
+      persistSavedPlan(next);state.savedPlan=next;showToast("Removed from plan");
+    }
+  }));
+  const clearBtn=document.getElementById("plan-clear-btn");
+  if(clearBtn)clearBtn.addEventListener("click",()=>clearSavedPlan());
+  const shareBtn=document.getElementById("plan-share-btn");
+  if(shareBtn)shareBtn.addEventListener("click",()=>shareSavedPlan());
+  const copyBtn=document.getElementById("plan-copy-btn");
+  if(copyBtn)copyBtn.addEventListener("click",()=>copySavedPlanLink());
+  const saveShared=document.getElementById("shared-save-btn");
+  if(saveShared)saveShared.addEventListener("click",()=>saveSharedToMyPlan());
+  const sharedClose=document.getElementById("shared-close-btn");
+  if(sharedClose)sharedClose.addEventListener("click",close);
+}
+function ingestSharedPlanFromUrl(){
+  try{
+    const params=new URLSearchParams(location.search);
+    const planParam=params.get("plan");
+    if(!planParam)return;
+    const decoded=decodePlanPayload(planParam);
+    if(decoded&&decoded.length){
+      state.sharedPlan=decoded;
+      state.sharedSheetOpen=true;
+      state.planSheetOpen=false;
+    }
+    params.delete("plan");
+    const qs=params.toString();
+    history.replaceState({},"",location.pathname+(qs?"?"+qs:"")+location.hash);
+  }catch(e){}
+}
+
 
 // ── Auth handlers ─────────────────────────────────────────────────────────────
 
@@ -4258,6 +4532,7 @@ async function restoreSession(){
 function render(){
   document.getElementById("root").innerHTML=state.legalScreen?renderLegal():state.screen==="home"?renderHome():renderResults();
   bindEvents();
+  syncPlanSheet();
   // Only create modal if it doesn't exist yet
   const existingModal = document.getElementById("auth-modal-overlay");
   if(state.authModal && !existingModal){
@@ -4584,12 +4859,15 @@ function renderHome(){
   <div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;position:relative;overflow:hidden">
     <div style="position:absolute;top:-15%;left:50%;transform:translateX(-50%);width:600px;height:600px;background:radial-gradient(circle,rgba(99,102,241,0.12) 0%,transparent 70%);pointer-events:none"></div>
     
-    <!-- Account button top right -->
-    <div style="position:absolute;top:20px;right:20px">
+    <!-- Account + My plan top -->
+    <div style="position:absolute;top:20px;left:20px;right:20px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:5">
+      <div>${state.savedPlan.length?`<div id="home-my-plan-btn" class="home-plan-chip">📋 My plan · ${state.savedPlan.length}</div>`:""}</div>
+      <div>
       ${state.user
         ?`<div id="signout-btn" style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.75);font-size:12px;cursor:pointer;border:1px solid rgba(255,255,255,0.08)">${state.user.email?.split("@")[0]||"Account"} ↗</div>`
         :`<div id="signin-btn" style="padding:6px 14px;border-radius:999px;background:rgba(99,102,241,0.12);color:#a5b4fc;font-size:12px;cursor:pointer;border:1px solid rgba(99,102,241,0.2)">Sign in</div>`
       }
+      </div>
     </div>
 
     <div style="position:relative;width:100%;max-width:380px">
@@ -4661,9 +4939,7 @@ function renderHome(){
         </div>
       </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Tonight: <strong style="color:#fcd34d;font-weight:650">Events</strong> (concerts & ticketed shows) and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> (bars & nightlife, spots nearby).</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Weekend: <strong style="color:#a5b4fc;font-weight:650">Events</strong> you buy tickets for, then <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> — bars, nightlife, and local spots.</div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
 
-
-
-
+    ${renderPlanFab()}
     </div>
   </div>`;
 }
@@ -4894,8 +5170,9 @@ const filtered=sourceList.filter(ev=>{
           </div>
           <div class="meta-quiet" style="margin-top:4px">${san(ev.location||ev.address||"")}${ev.address&&ev.address!==ev.location&&!isPlace?` · ${san(ev.address)}`:""}</div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;padding:4px 2px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;padding:4px 2px">
           <div class="fav-btn" data-id="${ev.id}" style="font-size:16px;cursor:pointer;opacity:${isFav?1:0.25};color:${isFav?"#fbbf24":"#fff"};min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center">${isFav?"★":"☆"}</div>
+          <div class="plan-add-btn${isInSavedPlan(ev.id)?" on":""}" data-id="${ev.id}" title="${isInSavedPlan(ev.id)?"In plan":"Add to plan"}">${isInSavedPlan(ev.id)?"✓ Plan":"+ Plan"}</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.35);transform:${isOpen?"rotate(180deg)":"rotate(0deg)"};transition:transform 0.2s">▾</div>
         </div>
       </div>
@@ -4963,14 +5240,17 @@ const filtered=sourceList.filter(ev=>{
           </div>
         </div>`:""}
 
-        <div style="display:flex;gap:8px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
           ${isPlace?`
           ${ev.address||ev.location?`<a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(ev.address||ev.location)}" target="_blank" rel="noopener noreferrer" style="flex:1;padding:12px;border-radius:12px;background:rgba(99,162,255,0.14);color:#93c5fd;font-size:12px;font-weight:650;text-align:center;cursor:pointer;border:1px solid rgba(99,162,255,0.22);text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:44px">↗ Directions</a>`:""}
           ${ev.url?`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="flex:1;padding:12px;border-radius:12px;background:${meta.color}16;color:${meta.color};font-size:12px;font-weight:650;text-align:center;cursor:pointer;border:1px solid ${meta.color}28;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:44px">Website</a>`:""}
           ${ev.phone?`<a href="tel:${ev.phone}" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.65);font-size:12px;font-weight:650;text-align:center;border:1px solid rgba(255,255,255,0.07);text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:44px">Call</a>`:""}
+          <div class="plan-add-btn${isInSavedPlan(ev.id)?" on":""}" data-id="${ev.id}" style="flex:1;padding:12px;border-radius:12px;font-size:12px;min-height:44px">${isInSavedPlan(ev.id)?"✓ In plan":"+ Plan"}</div>
+          <div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${san(ev.type||"Place")}" data-loc="${encodeURIComponent(ev.location||ev.address||"")}" data-cost="${ev.cost||""}" data-url="${ev.url||""}" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,0.045);color:rgba(255,255,255,0.65);font-size:12px;font-weight:650;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;min-height:44px">Share</div>
           `:`
           <div class="cal-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${ev.date||""}" data-addr="${encodeURIComponent(ev.address||ev.location)}" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,0.045);color:rgba(255,255,255,0.65);font-size:12px;font-weight:650;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;min-height:44px">Calendar</div>
           ${ev.url?`<a href="${ev.url}" target="_blank" rel="noopener noreferrer" style="flex:1;padding:12px;border-radius:12px;background:linear-gradient(135deg,${meta.color}28,${meta.color}14);color:${meta.color};font-size:12px;font-weight:700;text-align:center;cursor:pointer;border:1px solid ${meta.color}35;text-decoration:none;display:flex;align-items:center;justify-content:center;min-height:44px">Tickets</a>`:""}
+          <div class="plan-add-btn${isInSavedPlan(ev.id)?" on":""}" data-id="${ev.id}" style="flex:1;padding:12px;border-radius:12px;font-size:12px;min-height:44px">${isInSavedPlan(ev.id)?"✓ In plan":"+ Plan"}</div>
           <div class="share-btn" data-name="${encodeURIComponent(ev.name)}" data-date="${formatDate(ev.date)}" data-loc="${encodeURIComponent(ev.location)}" data-cost="${ev.cost}" data-url="${ev.url||""}" style="flex:1;padding:12px;border-radius:12px;background:rgba(255,255,255,0.045);color:rgba(255,255,255,0.65);font-size:12px;font-weight:650;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;min-height:44px">Share</div>
           `}
         </div>
@@ -5109,6 +5389,7 @@ const filtered=sourceList.filter(ev=>{
         </div>
       </div>
     </div>`}
+    ${renderPlanFab()}
   </div>`;
 }
 
@@ -5487,6 +5768,18 @@ function bindEvents(){
     }
   }));
   document.querySelectorAll(".fav-btn").forEach(el=>el.addEventListener("click",e=>{e.stopPropagation();const id=el.dataset.id;const f=new Set(state.favs);f.has(id)?f.delete(id):f.add(id);setState({favs:f});}));
+  document.querySelectorAll(".plan-add-btn").forEach(el=>el.addEventListener("click",e=>{
+    e.stopPropagation();
+    const id=el.dataset.id;
+    const item=findItemById(id);
+    if(!item){showToast("Could not add item");return;}
+    const forceKind=item.kind==="place"||state.feedMode==="places"?"place":(item.kind||"event");
+    toggleSavedPlan(item, forceKind==="place"?"place":"event");
+  }));
+  const myPlanFab=document.getElementById("my-plan-fab");
+  if(myPlanFab)myPlanFab.addEventListener("click",()=>setState({planSheetOpen:true,sharedSheetOpen:false}));
+  const homePlanBtn=document.getElementById("home-my-plan-btn");
+  if(homePlanBtn)homePlanBtn.addEventListener("click",()=>setState({planSheetOpen:true,sharedSheetOpen:false}));
   document.querySelectorAll(".going-btn").forEach(el=>el.addEventListener("click",()=>toggleAttendance(el.dataset.id,decodeURIComponent(el.dataset.name))));
   document.querySelectorAll(".type-filter").forEach(el=>el.addEventListener("click",()=>{state.typeFilter=el.dataset.type;render();}));
   document.querySelectorAll(".who-filter").forEach(el=>el.addEventListener("click",()=>{state.whoFilter=el.dataset.who;render();}));
@@ -5559,6 +5852,8 @@ if(path === '/privacy' || path === '/privacy.html'){
     <p>legal@buzzfinder.app</p>
   </div>`;
 } else {
+  state.savedPlan=loadSavedPlan();
+  ingestSharedPlanFromUrl();
   restoreSession().then(()=>{ render(); });
 }
 </script>
