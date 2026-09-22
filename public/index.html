@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
-<meta name="bf-build" content="saves-share-v1">
+<meta name="bf-build" content="night-out-v1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -21,6 +21,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sa
 @keyframes slideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:800px}}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
 @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@keyframes orbFloat{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(8px,-12px) scale(1.04)}}
 input,textarea,select{font-family:inherit;}
 #map{width:100%;height:calc(100vh - 180px);background:#0a0a0f;}
 .leaflet-container{background:#1a1a2e !important;}
@@ -38,26 +39,30 @@ input,textarea,select{font-family:inherit;}
 .seg-btn.active-places{background:linear-gradient(135deg,rgba(236,72,153,0.5),rgba(244,114,182,0.35));color:#fce7f3;box-shadow:0 2px 14px rgba(236,72,153,0.24);}
 .seg.compact{border-radius:11px;padding:2px;}
 .seg.compact .seg-btn{padding:5px 12px;font-size:11px;min-height:32px;border-radius:9px;}
+.seg-btn.active-tonight{background:linear-gradient(135deg,rgba(245,158,11,0.55),rgba(236,72,153,0.4));color:#fff;box-shadow:0 2px 10px rgba(245,158,11,0.25);}
+.seg-btn.active-weekend{background:linear-gradient(135deg,rgba(99,102,241,0.55),rgba(139,92,246,0.4));color:#e0e7ff;box-shadow:0 2px 10px rgba(99,102,241,0.25);}
 
 /* Tonight / This weekend plan CTA */
-.plan-cta{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
-.plan-cta-label{font-size:10px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:1.1px;text-align:center;font-weight:600;}
-.plan-seg{display:flex;padding:4px;background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(236,72,153,0.08));border-radius:16px;border:1px solid rgba(245,158,11,0.22);gap:4px;box-shadow:0 4px 24px rgba(245,158,11,0.08);}
-.plan-btn{flex:1;padding:14px 12px;font-size:14px;font-weight:700;cursor:pointer;border-radius:12px;color:rgba(255,255,255,0.55);transition:background .18s,color .18s,box-shadow .18s;user-select:none;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;letter-spacing:-0.2px;}
-.plan-btn:hover{color:rgba(255,255,255,0.88);background:rgba(255,255,255,0.04);}
-.plan-btn .plan-sub{font-size:10px;font-weight:500;opacity:0.7;letter-spacing:0.2px;}
-.plan-btn.active-tonight{background:linear-gradient(135deg,rgba(245,158,11,0.65),rgba(236,72,153,0.5));color:#fff;box-shadow:0 4px 18px rgba(245,158,11,0.35);}
-.plan-btn.active-weekend{background:linear-gradient(135deg,rgba(99,102,241,0.6),rgba(139,92,246,0.48));color:#e0e7ff;box-shadow:0 4px 18px rgba(99,102,241,0.32);}
+.plan-cta{display:flex;flex-direction:column;gap:12px;margin-bottom:22px;}
+.plan-cta-label{font-size:11px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:1.4px;text-align:center;font-weight:700;}
+.plan-seg{display:flex;padding:5px;background:linear-gradient(135deg,rgba(245,158,11,0.14),rgba(236,72,153,0.12) 50%,rgba(139,92,246,0.12));border-radius:20px;border:1px solid rgba(245,158,11,0.32);gap:6px;box-shadow:0 6px 32px rgba(245,158,11,0.14),0 0 40px rgba(236,72,153,0.08),inset 0 1px 0 rgba(255,255,255,0.06);}
+.plan-btn{flex:1;padding:16px 12px;font-size:15px;font-weight:800;cursor:pointer;border-radius:15px;color:rgba(255,255,255,0.72);transition:background .2s,color .2s,box-shadow .2s,transform .15s;user-select:none;min-height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;letter-spacing:-0.3px;background:rgba(255,255,255,0.03);box-shadow:0 0 18px rgba(245,158,11,0.08);}
+.plan-btn:hover{color:#fff;background:rgba(255,255,255,0.06);transform:translateY(-1px);}
+.plan-btn .plan-sub{font-size:11px;font-weight:500;opacity:0.72;letter-spacing:0.15px;text-align:center;line-height:1.25;max-width:140px;}
+.plan-btn.active-tonight{background:linear-gradient(135deg,rgba(245,158,11,0.72),rgba(236,72,153,0.55));color:#fff;box-shadow:0 6px 24px rgba(245,158,11,0.42),0 0 28px rgba(236,72,153,0.2);}
+.plan-btn.active-weekend{background:linear-gradient(135deg,rgba(99,102,241,0.68),rgba(139,92,246,0.52));color:#e0e7ff;box-shadow:0 6px 24px rgba(99,102,241,0.38),0 0 28px rgba(139,92,246,0.18);}
 .meta-chip.reason{background:rgba(245,158,11,0.12);color:#fcd34d;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
-.plan-banner{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;margin-bottom:14px;background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(236,72,153,0.08));border:1px solid rgba(245,158,11,0.2);}
+.plan-banner{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;margin-bottom:16px;background:linear-gradient(135deg,rgba(245,158,11,0.14),rgba(236,72,153,0.1) 55%,rgba(139,92,246,0.08));border:1px solid rgba(245,158,11,0.28);box-shadow:0 4px 20px rgba(245,158,11,0.08);}
 
-/* Result cards */
-.buzz-card{border-radius:18px;overflow:hidden;background:transparent;border:1px solid transparent;margin-bottom:0;transition:background .2s,border-color .2s,box-shadow .2s;}
-.buzz-card.open{background:rgba(255,255,255,0.035);border-color:rgba(255,255,255,0.09);margin-bottom:10px;box-shadow:0 10px 32px rgba(0,0,0,0.38);}
-.buzz-card-row{display:flex;align-items:center;gap:12px;padding:13px 10px;cursor:pointer;min-height:68px;border-radius:16px;transition:background .15s;}
-.buzz-card-row:hover{background:rgba(255,255,255,0.03);}
+/* Result cards — photo-forward, card-like */
+.buzz-card{border-radius:16px;overflow:hidden;background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.07);margin-bottom:10px;transition:background .2s,border-color .2s,box-shadow .2s;}
+.buzz-card:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.11);}
+.buzz-card.open{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.12);margin-bottom:12px;box-shadow:0 12px 36px rgba(0,0,0,0.42),0 0 24px rgba(236,72,153,0.06);}
+.buzz-card-row{display:flex;align-items:center;gap:12px;padding:12px 12px;cursor:pointer;min-height:76px;border-radius:0;transition:background .15s;}
+.buzz-card-row:hover{background:rgba(255,255,255,0.02);}
 .buzz-card.open .buzz-card-row{padding:14px 14px 8px;}
-.card-icon{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.card-thumb{width:64px;height:64px;border-radius:14px;object-fit:cover;flex-shrink:0;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);}
+.card-icon{width:64px;height:64px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;box-shadow:inset 0 1px 0 rgba(255,255,255,0.06);}
 .card-title{font-weight:650;font-size:15px;color:#f8fafc;line-height:1.3;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-0.2px;}
 .card-meta-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .meta-chip{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:7px;line-height:1.35;white-space:nowrap;}
@@ -69,23 +74,47 @@ input,textarea,select{font-family:inherit;}
 .meta-quiet{font-size:12px;color:rgba(255,255,255,0.42);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
 .type-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.9px;}
 .detail-panel{padding:4px 14px 18px;animation:fadeIn .22s ease;}
+.card-actions{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;padding:2px 0;}
+.fav-btn{font-size:18px;cursor:pointer;min-width:36px;min-height:36px;display:flex;align-items:center;justify-content:center;border-radius:10px;transition:background .15s,opacity .15s;}
+.fav-btn:hover{background:rgba(255,255,255,0.06);}
+.plan-add-btn{font-size:11px;font-weight:700;cursor:pointer;padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.55);min-height:32px;min-width:56px;display:flex;align-items:center;justify-content:center;white-space:nowrap;letter-spacing:0.2px;user-select:none;transition:background .15s,border-color .15s,color .15s;}
+.plan-add-btn.on{background:rgba(99,102,241,0.22);border-color:rgba(99,102,241,0.45);color:#c7d2fe;}
+.plan-add-btn:hover{color:rgba(255,255,255,0.85);border-color:rgba(255,255,255,0.2);}
 
-/* Home hero */
-.hero-logo{font-size:52px;font-weight:900;letter-spacing:-3.5px;line-height:1;background:linear-gradient(135deg,#f59e0b 0%,#ec4899 48%,#8b5cf6 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.hero-tagline{color:rgba(255,255,255,0.52);font-size:15px;margin-top:10px;font-weight:500;letter-spacing:0.1px;line-height:1.45;}
-.hero-tagline em{font-style:normal;color:rgba(255,255,255,0.88);font-weight:600;}
-.gps-cta{display:flex;align-items:center;justify-content:center;gap:8px;padding:15px 20px;border-radius:16px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);cursor:pointer;margin-bottom:16px;transition:background .15s,border-color .15s;min-height:52px;}
-.gps-cta:hover{background:rgba(99,102,241,0.18);border-color:rgba(99,102,241,0.38);}
+/* Home hero — night-out atmosphere */
+.home-shell{min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;position:relative;overflow:hidden;}
+.home-orbs{position:absolute;inset:0;pointer-events:none;overflow:hidden;}
+.home-orb{position:absolute;border-radius:50%;filter:blur(2px);animation:orbFloat 12s ease-in-out infinite;}
+.home-orb.amber{top:-8%;left:42%;width:520px;height:520px;background:radial-gradient(circle,rgba(245,158,11,0.18) 0%,transparent 68%);transform:translateX(-50%);}
+.home-orb.pink{top:28%;right:-18%;width:380px;height:380px;background:radial-gradient(circle,rgba(236,72,153,0.16) 0%,transparent 70%);animation-delay:-4s;}
+.home-orb.violet{bottom:-12%;left:-14%;width:420px;height:420px;background:radial-gradient(circle,rgba(139,92,246,0.14) 0%,transparent 70%);animation-delay:-7s;}
+.home-vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 42%,rgba(0,0,0,0.55) 100%);opacity:0.85;}
+.home-grain{position:absolute;inset:0;pointer-events:none;opacity:0.045;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");background-size:180px 180px;mix-blend-mode:overlay;}
+.hero-logo{font-size:58px;font-weight:900;letter-spacing:-3.8px;line-height:1;background:linear-gradient(135deg,#f59e0b 0%,#ec4899 48%,#8b5cf6 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;filter:drop-shadow(0 4px 24px rgba(236,72,153,0.25));}
+.hero-tagline{color:rgba(255,255,255,0.5);font-size:16px;margin-top:12px;font-weight:500;letter-spacing:0.1px;line-height:1.45;}
+.hero-tagline em{font-style:normal;color:#fff;font-weight:700;background:linear-gradient(135deg,#fcd34d,#f9a8d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.gps-cta{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 20px;border-radius:16px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);cursor:pointer;margin-bottom:18px;transition:background .15s,border-color .15s,box-shadow .15s;min-height:50px;}
+.gps-cta:hover{background:rgba(99,102,241,0.16);border-color:rgba(99,102,241,0.35);box-shadow:0 4px 18px rgba(99,102,241,0.15);}
+.search-glass{background:rgba(255,255,255,0.055);border-radius:18px;border:1.5px solid rgba(255,255,255,0.1);overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.28),inset 0 1px 0 rgba(255,255,255,0.06);backdrop-filter:blur(12px);transition:border-color .2s,box-shadow .2s;}
+.search-glass.focused{border-color:rgba(236,72,153,0.45);box-shadow:0 0 0 3px rgba(236,72,153,0.1),0 8px 32px rgba(0,0,0,0.28);}
+.home-secondary{opacity:0.72;transition:opacity .2s;}
+.home-secondary:focus-within,.home-secondary:hover{opacity:1;}
+.results-city{font-weight:800;font-size:22px;letter-spacing:-0.5px;color:#f8fafc;line-height:1.15;}
+.results-sub{font-size:12px;color:rgba(255,255,255,0.42);margin-top:3px;}
+.filters-quiet{opacity:0.85;}
+.filters-quiet .chip-row{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:6px;}
+.filters-quiet .chip-row::-webkit-scrollbar{display:none;}
+.group-header.plan-section{box-shadow:0 4px 16px rgba(0,0,0,0.2);}
 
 /* Empty + loading skeletons */
-.empty-state{text-align:center;padding:64px 24px;}
-.empty-icon{width:64px;height:64px;margin:0 auto 18px;border-radius:20px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;justify-content:center;font-size:26px;opacity:0.75;}
-.empty-state h3{color:#f1f5f9;font-size:16px;font-weight:650;margin-bottom:8px;letter-spacing:-0.2px;}
-.empty-state p{color:rgba(255,255,255,0.42);font-size:13px;line-height:1.55;max-width:300px;margin:0 auto 18px;}
+.empty-state{text-align:center;padding:72px 24px;}
+.empty-icon{width:76px;height:76px;margin:0 auto 20px;border-radius:22px;background:linear-gradient(135deg,rgba(245,158,11,0.14),rgba(236,72,153,0.12) 50%,rgba(139,92,246,0.12));border:1px solid rgba(245,158,11,0.28);display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 8px 28px rgba(236,72,153,0.12);}
+.empty-state h3{color:#f8fafc;font-size:18px;font-weight:750;margin-bottom:10px;letter-spacing:-0.3px;}
+.empty-state p{color:rgba(255,255,255,0.45);font-size:14px;line-height:1.55;max-width:300px;margin:0 auto 20px;}
 .skeleton-wrap{max-width:700px;margin:0 auto;padding:20px 16px;width:100%;}
-.skeleton-row{display:flex;gap:12px;padding:14px 4px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.skeleton-row{display:flex;gap:12px;padding:12px;margin-bottom:10px;border-radius:16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);}
 .skel{background:linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.09) 50%,rgba(255,255,255,0.04) 75%);background-size:200% 100%;animation:shimmer 1.35s ease infinite;border-radius:10px;}
-.skel-icon{width:46px;height:46px;border-radius:14px;flex-shrink:0;}
+.skel-icon{width:64px;height:64px;border-radius:14px;flex-shrink:0;}
 .skel-line{height:11px;margin-bottom:8px;border-radius:6px;}
 .chip{padding:7px 13px;border-radius:999px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:5px;min-height:34px;transition:background .15s,border-color .15s,color .15s;}
 .group-header{display:flex;align-items:center;gap:8px;padding:18px 4px 10px;}
@@ -96,8 +125,6 @@ input,textarea,select{font-family:inherit;}
 .plan-fab{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:1600;display:flex;align-items:center;gap:8px;padding:12px 20px;border-radius:999px;background:linear-gradient(135deg,rgba(99,102,241,0.92),rgba(236,72,153,0.88));color:#fff;font-size:14px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.18);box-shadow:0 8px 28px rgba(99,102,241,0.45);letter-spacing:-0.2px;white-space:nowrap;min-height:48px}
 .plan-fab:hover{filter:brightness(1.06)}
 .plan-fab .plan-fab-count{background:rgba(0,0,0,0.25);padding:2px 9px;border-radius:999px;font-size:12px;font-weight:750}
-.plan-add-btn{font-size:10px;font-weight:700;cursor:pointer;padding:4px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.45);min-height:28px;display:flex;align-items:center;justify-content:center;white-space:nowrap;letter-spacing:0.2px;user-select:none}
-.plan-add-btn.on{background:rgba(99,102,241,0.22);border-color:rgba(99,102,241,0.45);color:#c7d2fe}
 .plan-sheet-overlay{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.72);backdrop-filter:blur(10px);display:flex;align-items:flex-end;justify-content:center;padding:0}
 .plan-sheet{width:100%;max-width:480px;max-height:88vh;background:#13131f;border-radius:22px 22px 0 0;border:1px solid rgba(255,255,255,0.1);border-bottom:none;display:flex;flex-direction:column;animation:planSheetUp .28s ease;box-shadow:0 -12px 40px rgba(0,0,0,0.5)}
 .plan-sheet-head{display:flex;align-items:center;gap:12px;padding:18px 18px 12px;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
@@ -108,6 +135,10 @@ input,textarea,select{font-family:inherit;}
 .plan-sheet-secondary{padding:12px;border-radius:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:13px;font-weight:650;text-align:center;cursor:pointer;border:1px solid rgba(255,255,255,0.08);min-height:44px}
 .home-plan-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.28);color:#c7d2fe;font-size:12px;font-weight:650;cursor:pointer}
 
+@media (prefers-reduced-motion:reduce){
+  .home-orb{animation:none;}
+  .skel{animation:none;}
+}
 </style>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -4854,11 +4885,18 @@ function renderLegal(){
 
 function renderHome(){
   const sugg=state.suggestions;
+  const searchFocused=!!state.searchInput;
   return`
   ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap;font-size:14px">${state.toast}</div>`:""}
-  <div style="min-height:100vh;background:#0a0a0f;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;position:relative;overflow:hidden">
-    <div style="position:absolute;top:-15%;left:50%;transform:translateX(-50%);width:600px;height:600px;background:radial-gradient(circle,rgba(99,102,241,0.12) 0%,transparent 70%);pointer-events:none"></div>
-    
+  <div class="home-shell">
+    <div class="home-orbs" aria-hidden="true">
+      <div class="home-orb amber"></div>
+      <div class="home-orb pink"></div>
+      <div class="home-orb violet"></div>
+    </div>
+    <div class="home-vignette" aria-hidden="true"></div>
+    <div class="home-grain" aria-hidden="true"></div>
+
     <!-- Account + My plan top -->
     <div style="position:absolute;top:20px;left:20px;right:20px;display:flex;align-items:center;justify-content:space-between;gap:10px;z-index:5">
       <div>${state.savedPlan.length?`<div id="home-my-plan-btn" class="home-plan-chip">📋 My plan · ${state.savedPlan.length}</div>`:""}</div>
@@ -4870,14 +4908,10 @@ function renderHome(){
       </div>
     </div>
 
-    <div style="position:relative;width:100%;max-width:380px">
-      <div style="text-align:center;margin-bottom:36px">
+    <div style="position:relative;width:100%;max-width:380px;z-index:2">
+      <div style="text-align:center;margin-bottom:32px">
         <div class="hero-logo">buzz</div>
-        <div class="hero-tagline"><em>Stop scrolling.</em> Start doing.</div>
-      </div>
-
-      <div id="gps-btn" class="gps-cta">
-        ${state.gpsLoading?`<div style="width:16px;height:16px;border-radius:50%;border:2px solid rgba(165,180,252,0.3);border-top-color:#a5b4fc;animation:spin 0.8s linear infinite"></div><span style="color:#a5b4fc;font-size:13px;font-weight:600">Detecting location…</span>`:`<span style="font-size:15px">📍</span><span style="color:#c7d2fe;font-size:14px;font-weight:600">Use my current location</span>`}
+        <div class="hero-tagline">Stop scrolling. Start <em>doing</em>.</div>
       </div>
 
       <div class="plan-cta">
@@ -4885,59 +4919,65 @@ function renderHome(){
         <div class="plan-seg">
           <div class="plan-btn ${state.feedMode==="tonight"?"active-tonight":""}" data-plan="tonight">
             <span>🌙 Tonight</span>
-            <span class="plan-sub">Near you · open soon</span>
+            <span class="plan-sub">Bars, shows & spots near you</span>
           </div>
           <div class="plan-btn ${state.feedMode==="weekend"?"active-weekend":""}" data-plan="weekend">
             <span>📅 This weekend</span>
-            <span class="plan-sub">Sat–Sun picks</span>
+            <span class="plan-sub">Your weekend shortlist</span>
           </div>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:center;margin-bottom:18px">
-        <div class="seg">
-          <div class="feed-mode-btn seg-btn ${state.feedMode==="events"?"active-events":""}" data-mode="events">Events</div>
-          <div class="feed-mode-btn seg-btn ${state.feedMode==="places"?"active-places":""}" data-mode="places">Things to do</div>
         </div>
       </div>
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div>
-        <span style="color:rgba(255,255,255,0.75);font-size:11px;letter-spacing:1px;text-transform:uppercase">or search</span>
+        <span style="color:rgba(255,255,255,0.4);font-size:10px;letter-spacing:1.2px;text-transform:uppercase;font-weight:600">or type a city</span>
         <div style="flex:1;height:1px;background:rgba(255,255,255,0.06)"></div>
       </div>
 
-      <div style="position:relative;margin-bottom:${sugg.length?0:14}px">
-        <div style="display:flex;background:rgba(255,255,255,0.055);border-radius:16px;border:1.5px solid ${state.searchInput?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.08)"};overflow:hidden;box-shadow:${state.searchInput?"0 0 0 3px rgba(99,102,241,0.08)":"none"}">
+      <div style="position:relative;margin-bottom:${sugg.length?0:12}px">
+        <div class="search-glass${searchFocused?" focused":""}" style="display:flex">
           <input id="search-input" type="text" value="${state.searchInput}" placeholder="City or ZIP code…"
             autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" dir="ltr"
-            style="flex:1;background:transparent;border:none;outline:none;padding:15px 16px;font-size:16px;color:#fff;min-width:0;direction:ltr;"/>
-          <div id="search-go" style="padding:0 18px;display:flex;align-items:center;justify-content:center;background:${state.searchInput.length>1?"linear-gradient(135deg,#6366f1,#8b5cf6)":"transparent"};cursor:pointer;font-size:17px;font-weight:600;color:${state.searchInput.length>1?"#fff":"rgba(255,255,255,0.2)"};min-width:52px">→</div>
+            style="flex:1;background:transparent;border:none;outline:none;padding:16px 16px;font-size:16px;color:#fff;min-width:0;direction:ltr;"/>
+          <div id="search-go" style="padding:0 18px;display:flex;align-items:center;justify-content:center;background:${state.searchInput.length>1?"linear-gradient(135deg,#f59e0b,#ec4899)":"transparent"};cursor:pointer;font-size:17px;font-weight:600;color:${state.searchInput.length>1?"#fff":"rgba(255,255,255,0.2)"};min-width:52px">→</div>
         </div>
       </div>
 
       <div id="suggestions-container"></div>
       ${state.searchError?`<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.15);border-radius:10px;padding:10px 14px;font-size:13px;color:#fca5a5;margin-bottom:12px">${state.searchError}</div>`:""}
 
-      <div style="margin-bottom:12px;position:relative">
-        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;opacity:0.4">🔍</span>
-        <input id="event-search-input" type="text" value="${(state.eventSearch||'').replace(/"/g,'&quot;')}" placeholder="${state.feedMode==="places"?"Search places…":state.feedMode==="tonight"||state.feedMode==="weekend"?"Filter picks…":"Search events…"}" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;color:#f1f5f9;padding:10px 12px 10px 36px;font-size:14px;box-sizing:border-box;outline:none">
-        ${state.eventSearch?`<span id="clear-event-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:12px;color:rgba(255,255,255,0.75)">✕</span>`:""}
+      <div id="gps-btn" class="gps-cta">
+        ${state.gpsLoading?`<div style="width:16px;height:16px;border-radius:50%;border:2px solid rgba(165,180,252,0.3);border-top-color:#a5b4fc;animation:spin 0.8s linear infinite"></div><span style="color:#a5b4fc;font-size:13px;font-weight:600">Detecting location…</span>`:`<span style="font-size:15px">📍</span><span style="color:#c7d2fe;font-size:14px;font-weight:650">Use my location</span>`}
       </div>
 
-      <div style="margin-bottom:14px">
-        <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">I'm looking for…</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${WHO_FILTERS.map(w=>`<div class="who-btn" data-who="${w.id}" style="padding:6px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.2)":"rgba(255,255,255,0.04)"};border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.4)":"rgba(255,255,255,0.06)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px">${w.icon} ${w.label}</div>`).join("")}
+      <div class="home-secondary">
+      <div style="display:flex;justify-content:center;margin-bottom:16px">
+        <div class="seg compact">
+          <div class="feed-mode-btn seg-btn ${state.feedMode==="events"?"active-events":""}" data-mode="events">Events</div>
+          <div class="feed-mode-btn seg-btn ${state.feedMode==="places"?"active-places":""}" data-mode="places">Things to do</div>
         </div>
       </div>
 
-      ${state.feedMode==="events"?`<div style="margin-bottom:20px">
-        <div style="font-size:10px;color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">How far out?</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          ${DATE_RANGES.map(d=>`<div class="range-btn" data-range="${d.id}" style="padding:6px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.35)":"rgba(255,255,255,0.06)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer">${d.label}</div>`).join("")}
+      <div style="margin-bottom:10px;position:relative">
+        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;opacity:0.35">🔍</span>
+        <input id="event-search-input" type="text" value="${(state.eventSearch||'').replace(/"/g,'&quot;')}" placeholder="${state.feedMode==="places"?"Search places…":state.feedMode==="tonight"||state.feedMode==="weekend"?"Filter picks…":"Search events…"}" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-radius:12px;color:rgba(255,255,255,0.85);padding:9px 12px 9px 34px;font-size:13px;box-sizing:border-box;outline:none">
+        ${state.eventSearch?`<span id="clear-event-search" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:12px;color:rgba(255,255,255,0.55)">✕</span>`:""}
+      </div>
+
+      <div style="margin-bottom:12px">
+        <div style="font-size:9px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">I'm looking for…</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${WHO_FILTERS.map(w=>`<div class="who-btn" data-who="${w.id}" style="padding:5px 10px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.18)":"rgba(255,255,255,0.03)"};border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.35)":"rgba(255,255,255,0.05)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.32)"};font-size:11px;cursor:pointer;display:flex;align-items:center;gap:4px">${w.icon} ${w.label}</div>`).join("")}
         </div>
-      </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Tonight: <strong style="color:#fcd34d;font-weight:650">Events</strong> (concerts & ticketed shows) and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> (bars & nightlife, spots nearby).</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.22);font-size:13px;color:rgba(255,255,255,0.6);line-height:1.45">Weekend: <strong style="color:#a5b4fc;font-weight:650">Events</strong> you buy tickets for, then <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> — bars, nightlife, and local spots.</div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
+      </div>
+
+      ${state.feedMode==="events"?`<div style="margin-bottom:16px">
+        <div style="font-size:9px;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">How far out?</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${DATE_RANGES.map(d=>`<div class="range-btn" data-range="${d.id}" style="padding:5px 10px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.14)":"rgba(255,255,255,0.03)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.3)":"rgba(255,255,255,0.05)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.32)"};font-size:11px;cursor:pointer">${d.label}</div>`).join("")}
+        </div>
+      </div>`:state.feedMode==="tonight"?`<div style="margin-bottom:16px;padding:11px 13px;border-radius:14px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.18);font-size:12px;color:rgba(255,255,255,0.55);line-height:1.45">Tonight: <strong style="color:#fcd34d;font-weight:650">Events</strong> (concerts & ticketed shows) and <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> (bars & nightlife, spots nearby).</div>`:state.feedMode==="weekend"?`<div style="margin-bottom:16px;padding:11px 13px;border-radius:14px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.18);font-size:12px;color:rgba(255,255,255,0.55);line-height:1.45">Weekend: <strong style="color:#a5b4fc;font-weight:650">Events</strong> you buy tickets for, then <strong style="color:#f9a8d4;font-weight:650">Things to do</strong> — bars, nightlife, and local spots.</div>`:`<div style="margin-bottom:16px;padding:11px 13px;border-radius:14px;background:rgba(236,72,153,0.06);border:1px solid rgba(236,72,153,0.14);font-size:12px;color:rgba(255,255,255,0.5);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
+      </div>
 
     ${renderPlanFab()}
     </div>
@@ -5042,20 +5082,21 @@ const filtered=sourceList.filter(ev=>{
       ?(state.feedMode==="tonight"?"Building tonight's list":"Building weekend picks")
       :isPlaces?(state.placesLoading?"Finding things to do":"Loading places"):(state.liveLoading?"Loading events":"Finding events near you");
     const loadLoc=`${state.info?.city||state.zip}${state.info?.state?", "+state.info.state:""}`;
-    return`<div style="min-height:100vh;background:#0a0a0f;padding-top:28px">
-      <div style="text-align:center;margin-bottom:8px;padding:0 20px">
-        <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:10px">
-          <div style="position:relative;width:28px;height:28px">
-            <div style="position:absolute;inset:0;border-radius:50%;border:2.5px solid rgba(99,102,241,0.15);border-top-color:#6366f1;animation:spin 0.8s linear infinite"></div>
+    return`<div style="min-height:100vh;background:#0a0a0f;padding-top:36px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-10%;left:50%;transform:translateX(-50%);width:480px;height:320px;background:radial-gradient(circle,rgba(245,158,11,0.12) 0%,rgba(236,72,153,0.08) 45%,transparent 70%);pointer-events:none"></div>
+      <div style="text-align:center;margin-bottom:14px;padding:0 20px;position:relative">
+        <div style="display:inline-flex;align-items:center;gap:12px;margin-bottom:10px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,0.04);border:1px solid rgba(245,158,11,0.22)">
+          <div style="position:relative;width:22px;height:22px">
+            <div style="position:absolute;inset:0;border-radius:50%;border:2.5px solid rgba(245,158,11,0.2);border-top-color:#f59e0b;animation:spin 0.8s linear infinite"></div>
           </div>
-          <p style="color:#f1f5f9;font-size:15px;font-weight:650;letter-spacing:-0.2px">${loadLabel}</p>
+          <p style="color:#f8fafc;font-size:15px;font-weight:700;letter-spacing:-0.2px">${loadLabel}</p>
         </div>
-        <p style="color:rgba(255,255,255,0.4);font-size:13px">${loadLoc}</p>
+        <p style="color:rgba(255,255,255,0.42);font-size:13px">${loadLoc} · lining up the night</p>
       </div>
       <div class="skeleton-wrap">
         ${[1,2,3,4,5,6].map(()=>`<div class="skeleton-row">
           <div class="skel skel-icon"></div>
-          <div style="flex:1;min-width:0;padding-top:4px">
+          <div style="flex:1;min-width:0;padding-top:6px">
             <div class="skel skel-line" style="width:28%;height:9px;margin-bottom:10px"></div>
             <div class="skel skel-line" style="width:72%"></div>
             <div class="skel skel-line" style="width:48%;margin-bottom:0"></div>
@@ -5140,16 +5181,20 @@ const filtered=sourceList.filter(ev=>{
     const showHeader=evGroup!==lastGroup;
     if(showHeader) lastGroup=evGroup;
     const planHeaderColor=evGroup==="Events"?(state.feedMode==="tonight"?"#fcd34d":"#a5b4fc"):"#f9a8d4";
-    const header=showHeader?`<div class="group-header${idx===0?" first":""}${isPlan?" plan-section":""}" style="${isPlan?"margin-top:"+(idx===0?"4px":"22px")+";padding:12px 12px;border-radius:14px;background:"+(evGroup==="Events"?"rgba(99,102,241,0.12)":"rgba(236,72,153,0.12)")+";border:1px solid "+(evGroup==="Events"?"rgba(99,102,241,0.28)":"rgba(236,72,153,0.28)")+";":""}"><span style="font-size:${isPlan?"13px":"11px"};font-weight:750;color:${isPlan?planHeaderColor:(isPlace?(meta.color):(GROUP_COLORS[evGroup]||"rgba(255,255,255,0.3)"))};text-transform:uppercase;letter-spacing:1.2px">${isPlan?(evGroup==="Events"?"📅 Events":"📍 Things to do"):evGroup}</span><div style="flex:1;height:1px;background:rgba(255,255,255,0.08)"></div><span style="font-size:11px;color:rgba(255,255,255,0.55);font-weight:650">${groupCount}</span></div>`:"";
+    const header=showHeader?`<div class="group-header${idx===0?" first":""}${isPlan?" plan-section":""}" style="${isPlan?"margin-top:"+(idx===0?"2px":"20px")+";margin-bottom:4px;padding:13px 14px;border-radius:14px;background:"+(evGroup==="Events"?"linear-gradient(135deg,rgba(99,102,241,0.16),rgba(139,92,246,0.08))":"linear-gradient(135deg,rgba(236,72,153,0.16),rgba(244,114,182,0.08))")+";border:1px solid "+(evGroup==="Events"?"rgba(99,102,241,0.32)":"rgba(236,72,153,0.32)")+";":""}"><span style="font-size:${isPlan?"13px":"11px"};font-weight:750;color:${isPlan?planHeaderColor:(isPlace?(meta.color):(GROUP_COLORS[evGroup]||"rgba(255,255,255,0.3)"))};text-transform:uppercase;letter-spacing:1.2px">${isPlan?(evGroup==="Events"?"📅 Events · ticketed shows":"📍 Things to do · bars & nightlife"):evGroup}</span><div style="flex:1;height:1px;background:rgba(255,255,255,0.08)"></div><span style="font-size:11px;color:rgba(255,255,255,0.55);font-weight:650">${groupCount}</span></div>`:"";
     const searchText=(ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||"");
     const dateLabel=formatDate(ev.date);
     const isSoon=ev.date==="Today"||ev.date==="Tomorrow"||dateLabel==="Today"||dateLabel==="Tomorrow";
     const distLabel=ev.distanceMiles!=null?(ev.distanceMiles<1?"<1 mi":Math.round(ev.distanceMiles)+" mi"):"";
+    const hasPhoto=!!(ev.photo&&String(ev.photo).trim());
+    const thumbHtml=(!isOpen&&hasPhoto)
+      ?`<img class="card-thumb" src="${ev.photo}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex')"/><div class="card-icon" style="display:none;background:linear-gradient(145deg,${meta.color}28,${meta.color}10);border:1px solid ${meta.color}35">${meta.icon}</div>`
+      :`<div class="card-icon" style="background:linear-gradient(145deg,${meta.color}28,${meta.color}10);border:1px solid ${meta.color}35;box-shadow:0 4px 14px ${meta.color}18">${meta.icon}</div>`;
     return header+`
     <div class="buzz-card${isOpen?" open":""}" data-search="${searchText.toLowerCase().replace(/"/g,"")}">
-      ${isOpen?`<div style="position:relative;height:168px;overflow:hidden"><img src="${ev.photo}" alt="" onerror="this.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.7"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.95) 0%,transparent 55%)"></div><div style="position:absolute;top:12px;left:12px;padding:5px 11px;border-radius:999px;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);color:${meta.color};font-size:11px;font-weight:700">${san(ev.type)}</div>${ev.isWeekend?`<div style="position:absolute;top:12px;right:12px;padding:5px 11px;border-radius:999px;background:rgba(99,102,241,0.75);backdrop-filter:blur(8px);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
-      <div class="card-row buzz-card-row" data-id="${ev.id}" style="${!isOpen&&idx<displayList.length-1?"border-bottom:1px solid rgba(255,255,255,0.04)":""}">
-        <div class="card-icon" style="background:${meta.color}14;border:1px solid ${meta.color}28">${meta.icon}</div>
+      ${isOpen&&hasPhoto?`<div style="position:relative;height:168px;overflow:hidden"><img src="${ev.photo}" alt="" onerror="this.parentElement.style.display='none'" style="width:100%;height:100%;object-fit:cover;opacity:0.75"/><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,10,15,0.95) 0%,transparent 55%)"></div><div style="position:absolute;top:12px;left:12px;padding:5px 11px;border-radius:999px;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);color:${meta.color};font-size:11px;font-weight:700">${san(ev.type)}</div>${ev.isWeekend?`<div style="position:absolute;top:12px;right:12px;padding:5px 11px;border-radius:999px;background:rgba(99,102,241,0.75);backdrop-filter:blur(8px);color:#fff;font-size:11px;font-weight:700">This Weekend</div>`:""}</div>`:""}
+      <div class="card-row buzz-card-row" data-id="${ev.id}">
+        ${thumbHtml}
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
             <span class="type-label" style="color:${meta.color}">${ev.type}</span>
@@ -5170,8 +5215,8 @@ const filtered=sourceList.filter(ev=>{
           </div>
           <div class="meta-quiet" style="margin-top:4px">${san(ev.location||ev.address||"")}${ev.address&&ev.address!==ev.location&&!isPlace?` · ${san(ev.address)}`:""}</div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0;padding:4px 2px">
-          <div class="fav-btn" data-id="${ev.id}" style="font-size:16px;cursor:pointer;opacity:${isFav?1:0.25};color:${isFav?"#fbbf24":"#fff"};min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center">${isFav?"★":"☆"}</div>
+        <div class="card-actions">
+          <div class="fav-btn" data-id="${ev.id}" style="opacity:${isFav?1:0.28};color:${isFav?"#fbbf24":"#fff"}">${isFav?"★":"☆"}</div>
           <div class="plan-add-btn${isInSavedPlan(ev.id)?" on":""}" data-id="${ev.id}" title="${isInSavedPlan(ev.id)?"In plan":"Add to plan"}">${isInSavedPlan(ev.id)?"✓ Plan":"+ Plan"}</div>
           <div style="font-size:11px;color:rgba(255,255,255,0.35);transform:${isOpen?"rotate(180deg)":"rotate(0deg)"};transition:transform 0.2s">▾</div>
         </div>
@@ -5269,30 +5314,18 @@ const filtered=sourceList.filter(ev=>{
   ${state.toast?`<div style="position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2000;background:rgba(255,255,255,0.1);backdrop-filter:blur(12px);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,0.15);white-space:nowrap;font-size:14px">${state.toast}</div>`:""}
   <div style="min-height:100vh;background:#0a0a0f;color:#fff">
     <!-- Header -->
-    <div style="padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.06);position:sticky;top:0;background:rgba(10,10,15,0.92);backdrop-filter:blur(18px);z-index:100">
-      <div style="display:flex;align-items:center;gap:10px;max-width:700px;margin:0 auto 8px">
-        <div id="back-btn" style="width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">←</div>
+    <div style="padding:12px 14px 10px;border-bottom:1px solid rgba(255,255,255,0.05);position:sticky;top:0;background:rgba(10,10,15,0.94);backdrop-filter:blur(18px);z-index:100">
+      <div style="display:flex;align-items:center;gap:10px;max-width:700px;margin:0 auto">
+        <div id="back-btn" style="width:36px;height:36px;border-radius:12px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;border:1px solid rgba(255,255,255,0.07);flex-shrink:0">←</div>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:17px;letter-spacing:-0.35px;color:#f8fafc">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""}</div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.42);margin-top:2px">${isPlan
-            ? `${filtered.length} ${planLabel.toLowerCase()} picks · ranked mix`
+          <div class="results-city">${state.info?.city||state.zip}${state.info?.state?`, ${state.info.state}`:""}</div>
+          <div class="results-sub">${isPlan
+            ? `${filtered.length} ${planLabel.toLowerCase()} picks`
             : isPlaces
-            ? `${filtered.length} places${ratedCount?` · ${ratedCount} rated`:""} · ${state.placesLive?(state.placesFromCache?'<span style="color:#f59e0b">⚡ Cached</span>':'<span style="color:#6ee7b7">● Live</span>'):'<span style="color:rgba(255,255,255,0.35)">● —</span>'}`
-            : `${filtered.length} events · ${selectedRange?.label} · ${state.liveData?(state.fromCache?'<span style="color:#f59e0b">⚡ Cached</span>':'<span style="color:#6ee7b7">● Live</span>'):'<span style="color:rgba(255,255,255,0.35)">● Preview</span>'}`
+            ? `${filtered.length} places${ratedCount?` · ${ratedCount} rated`:""}`
+            : `${filtered.length} events · ${selectedRange?.label}`
           }</div>
-          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
-            <div class="seg compact">
-              <div class="plan-btn-mini feed-mode-btn seg-btn ${state.feedMode==="tonight"?"active-tonight":""}" data-mode="tonight" style="${state.feedMode==="tonight"?"background:linear-gradient(135deg,rgba(245,158,11,0.55),rgba(236,72,153,0.4));color:#fff;box-shadow:0 2px 10px rgba(245,158,11,0.25)":""}">Tonight</div>
-              <div class="plan-btn-mini feed-mode-btn seg-btn ${state.feedMode==="weekend"?"active-weekend":""}" data-mode="weekend" style="${state.feedMode==="weekend"?"background:linear-gradient(135deg,rgba(99,102,241,0.55),rgba(139,92,246,0.4));color:#e0e7ff;box-shadow:0 2px 10px rgba(99,102,241,0.25)":""}">Weekend</div>
-            </div>
-            <div class="seg compact">
-              <div class="feed-mode-btn seg-btn ${state.feedMode==="events"?"active-events":""}" data-mode="events">Events</div>
-              <div class="feed-mode-btn seg-btn ${state.feedMode==="places"?"active-places":""}" data-mode="places">Things to do</div>
-            </div>
-            ${state.feedMode==="events"?`<div id="submit-btn" style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.14);border:1px solid rgba(99,102,241,0.28);color:#c7d2fe;padding:6px 12px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:600;min-height:32px">＋ Add event</div>`:""}
-          </div>
         </div>
-        <!-- View toggle -->
         <div class="seg compact" style="flex-shrink:0">
           <div id="list-view-btn" class="seg-btn ${state.viewMode==="list"?"active-events":""}">List</div>
           <div id="map-view-btn" class="seg-btn ${state.viewMode==="map"?"active-events":""}">Map</div>
@@ -5302,11 +5335,16 @@ const filtered=sourceList.filter(ev=>{
           :`<div id="signin-btn" style="padding:6px 10px;border-radius:10px;background:rgba(99,102,241,0.1);color:#a5b4fc;font-size:11px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);flex-shrink:0">Sign in</div>`
         }
       </div>
-      <div style="display:flex;gap:5px;max-width:700px;margin:0 auto;flex-wrap:wrap">
-        <span style="padding:3px 9px;border-radius:6px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:11px;font-weight:500">${filtered.length} ${isPlan?"picks":(isPlaces?"places":"events")}</span>
-        ${isPlan?`<span style="padding:3px 9px;border-radius:6px;background:rgba(245,158,11,0.1);color:#fcd34d;font-size:11px;font-weight:500">${planLabel}</span>`:""}
-        ${freeCount?`<span style="padding:3px 9px;border-radius:6px;background:rgba(16,185,129,0.07);color:#6ee7b7;font-size:11px;font-weight:500">${freeCount} free</span>`:""}
-        ${!isPlaces&&!isPlan&&weekendCount?`<span style="padding:3px 9px;border-radius:6px;background:rgba(99,102,241,0.07);color:#a5b4fc;font-size:11px;font-weight:500">${weekendCount} this weekend</span>`:""}
+      <div style="display:flex;gap:6px;max-width:700px;margin:10px auto 0;flex-wrap:wrap;align-items:center">
+        <div class="seg compact">
+          <div class="plan-btn-mini feed-mode-btn seg-btn ${state.feedMode==="tonight"?"active-tonight":""}" data-mode="tonight">Tonight</div>
+          <div class="plan-btn-mini feed-mode-btn seg-btn ${state.feedMode==="weekend"?"active-weekend":""}" data-mode="weekend">Weekend</div>
+        </div>
+        <div class="seg compact">
+          <div class="feed-mode-btn seg-btn ${state.feedMode==="events"?"active-events":""}" data-mode="events">Events</div>
+          <div class="feed-mode-btn seg-btn ${state.feedMode==="places"?"active-places":""}" data-mode="places">Things</div>
+        </div>
+        ${state.feedMode==="events"?`<div id="submit-btn" style="display:inline-flex;align-items:center;gap:4px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);color:#c7d2fe;padding:5px 10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:600;min-height:30px;opacity:0.85">＋ Add</div>`:""}
         ${isPlaces&&state.placesError?`<span style="padding:3px 9px;border-radius:6px;background:rgba(239,68,68,0.1);color:#fca5a5;font-size:11px;font-weight:500">${san(state.placesError).slice(0,80)}</span>`:""}
       </div>
     </div>
@@ -5318,47 +5356,47 @@ const filtered=sourceList.filter(ev=>{
     <!-- List view -->
     <div style="max-width:700px;margin:0 auto;padding:14px 14px 88px">
       ${isPlan?`<div class="plan-banner">
-        <span style="font-size:18px">${state.feedMode==="tonight"?"🌙":"📅"}</span>
+        <span style="font-size:20px">${state.feedMode==="tonight"?"🌙":"📅"}</span>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:650;color:#f8fafc">${planLabel} in ${state.info?.city||state.zip}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,0.45);margin-top:2px">Events = ticketed shows · Things to do = bars, spots & experiences</div>
+          <div style="font-size:14px;font-weight:700;color:#f8fafc;letter-spacing:-0.2px">${planLabel} in ${state.info?.city||state.zip}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.48);margin-top:3px">📅 Events = ticketed shows · 📍 Things to do = bars & nightlife</div>
         </div>
       </div>`:""}
-      <div style="margin-bottom:12px">
-        <div style="display:flex;gap:5px;margin-bottom:7px;flex-wrap:wrap">
-          ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 12px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.3)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.3)":"rgba(255,255,255,0.05)"};display:flex;align-items:center;gap:4px">${w.icon} ${w.label}</div>`).join("")}
+      <div class="filters-quiet" style="margin-bottom:14px">
+        <div class="chip-row" style="display:flex;gap:5px;flex-wrap:nowrap;min-width:max-content;padding-bottom:2px;margin-bottom:8px">
+          ${WHO_FILTERS.map(w=>`<div class="who-filter" data-who="${w.id}" style="padding:5px 11px;border-radius:999px;background:${state.whoFilter===w.id?"rgba(99,102,241,0.14)":"transparent"};color:${state.whoFilter===w.id?"#a5b4fc":"rgba(255,255,255,0.32)"};font-size:11px;cursor:pointer;border:1px solid ${state.whoFilter===w.id?"rgba(99,102,241,0.28)":"rgba(255,255,255,0.04)"};display:flex;align-items:center;gap:4px;flex-shrink:0;white-space:nowrap">${w.icon} ${w.label}</div>`).join("")}
         </div>
-        <!-- Scrollable category filter row -->
-        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:7px">
-          <div style="display:flex;gap:6px;flex-nowrap;min-width:max-content;padding-bottom:2px">
+        <div class="chip-row">
+          <div style="display:flex;gap:5px;flex-nowrap;min-width:max-content;padding-bottom:2px">
             ${(()=>{
               const present=[...new Set(sourceList.map(e=>e.type).filter(Boolean))];
               const preferred=["Nightlife","Brewery","Music","Food","Outdoor","Kids","Arts","Sports","Market","Festival","Community","Family"];
               const ordered=["All",...preferred.filter(t=>present.includes(t)||t==="Nightlife"),...present.filter(t=>!preferred.includes(t))];
+              // Keep first paint calm: prefer All + up to 6 present types, rest still available after scroll
               return ordered.map(t=>{
               const active=state.typeFilter===t;
               const meta=m2(t);
-              const icon=t!=="All"?meta.icon+" ":"⚡ ";
-              const label=t==="Nightlife"?"Bars & nightlife":t;
-              return`<div class="type-filter" data-type="${t}" style="padding:6px 14px;border-radius:999px;background:${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.06)"};color:${active?"#fff":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:${active?700:500};cursor:pointer;border:1.5px solid ${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0;transition:all 0.15s">${icon}${label}</div>`;
+              const icon=t!=="All"?meta.icon+" ":"";
+              const label=t==="Nightlife"?"Bars":t;
+              return`<div class="type-filter" data-type="${t}" style="padding:5px 12px;border-radius:999px;background:${active?(t==="All"?"rgba(245,158,11,0.55)":meta.color+"cc"):"rgba(255,255,255,0.04)"};color:${active?"#fff":"rgba(255,255,255,0.38)"};font-size:11px;font-weight:${active?700:500};cursor:pointer;border:1px solid ${active?(t==="All"?"rgba(245,158,11,0.6)":meta.color+"55"):"rgba(255,255,255,0.06)"};white-space:nowrap;flex-shrink:0;transition:background .15s,border-color .15s,color .15s">${icon}${label}</div>`;
             }).join("");
             })()}
-            ${!isPlaces||isPlan?`<div class="toggle-free" style="padding:6px 14px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.06)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid ${state.freeOnly?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0">💚 Free</div>`:""}
-            <div class="clear-all" style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:12px;cursor:pointer;border:1.5px solid rgba(255,255,255,0.06);white-space:nowrap;flex-shrink:0">✕ Clear</div>
+            ${!isPlaces||isPlan?`<div class="toggle-free" style="padding:5px 12px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.14)":"rgba(255,255,255,0.04)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.38)"};font-size:11px;font-weight:500;cursor:pointer;border:1px solid ${state.freeOnly?"rgba(16,185,129,0.28)":"rgba(255,255,255,0.06)"};white-space:nowrap;flex-shrink:0">Free</div>`:""}
+            <div class="clear-all" style="padding:5px 12px;border-radius:999px;background:transparent;color:rgba(255,255,255,0.35);font-size:11px;cursor:pointer;border:1px solid rgba(255,255,255,0.05);white-space:nowrap;flex-shrink:0">Clear</div>
           </div>
         </div>
       </div>
       ${filtered.length===0?`<div class="empty-state">
-        <div class="empty-icon">${isPlan?(state.feedMode==="tonight"?"🌙":"📅"):(isPlaces?"◎":"✦")}</div>
+        <div class="empty-icon">${isPlan?(state.feedMode==="tonight"?"🌙":"📅"):(isPlaces?"🍸":"🎟️")}</div>
         <h3>${isPlan
-          ? (sourceList.length===0?`Nothing lined up for ${planLabel.toLowerCase()} yet`:"Nothing matches those filters")
-          : isPlaces?(state.placesError?"Couldn't load places":"Quiet around here"):(sourceList.length===0?"Quiet night in town":"Nothing matches those filters")}</h3>
+          ? (sourceList.length===0?`The night's still warming up`:"Nothing matches those filters")
+          : isPlaces?(state.placesError?"Couldn't load places":"Quiet on the map"):(sourceList.length===0?"Quiet night in town":"Nothing matches those filters")}</h3>
         <p>${isPlan
-          ? "Try browsing Things to do or full Events — or switch Tonight ↔ This weekend."
+          ? (sourceList.length===0?`No solid ${planLabel.toLowerCase()} picks yet — try Things to do, Events, or flip Tonight ↔ Weekend.`:"Loosen filters or switch lanes — the night's bigger than this list.")
           : isPlaces
-          ?(state.placesError?"Try again in a moment, or search a nearby city.":"We didn't find places nearby — try another city or switch to Events.")
+          ?(state.placesError?"Try again in a moment, or search a nearby city.":"No spots nearby yet — try another city or switch to Events.")
           :(sourceList.length===0
-            ?"Small towns can be sparse. Widen the date range, switch to Things to do, or add a local event."
+            ?"Sparse night. Widen the date range, switch to Things to do, or add a local event."
             :"Clear filters or pick a wider date range to see more.")}</p>
         <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
           ${!isPlan&&(!isPlaces||!state.placesError)?`<div class="clear-all" style="display:inline-block;padding:10px 18px;border-radius:12px;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.7);font-size:13px;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.08)">Clear filters</div>`:""}
