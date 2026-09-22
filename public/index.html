@@ -4223,7 +4223,7 @@ function renderHome(){
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${DATE_RANGES.map(d=>`<div class="range-btn" data-range="${d.id}" style="padding:6px 12px;border-radius:999px;background:${state.dateRange===d.id?"rgba(236,72,153,0.15)":"rgba(255,255,255,0.04)"};border:1px solid ${state.dateRange===d.id?"rgba(236,72,153,0.35)":"rgba(255,255,255,0.06)"};color:${state.dateRange===d.id?"#f9a8d4":"rgba(255,255,255,0.35)"};font-size:12px;cursor:pointer">${d.label}</div>`).join("")}
         </div>
-      </div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — museums, escape rooms, bowling, kayaks, and more.</div>`}
+      </div>`:`<div style="margin-bottom:20px;padding:12px 14px;border-radius:14px;background:rgba(236,72,153,0.08);border:1px solid rgba(236,72,153,0.18);font-size:13px;color:rgba(255,255,255,0.55);line-height:1.45">Ongoing local spots — bars & nightlife, breweries, museums, escape rooms, and more.</div>`}
 
 
 
@@ -4238,6 +4238,8 @@ function renderResults(){
   const maxDays=DATE_RANGES.find(d=>d.id===state.dateRange)?.days||90;
 const filtered=sourceList.filter(ev=>{
     if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
+    // Family who-filter hides nightlife only when user picks Families — not by default
+    if(state.whoFilter==="family"&&(ev.type==="Nightlife"))return false;
     if(!isPlaces && state.freeOnly&&ev.cost!=="Free")return false;
     if(!isPlaces){
       // Respect the "how far out" range. Use the same date field the grouping uses.
@@ -4565,12 +4567,18 @@ const filtered=sourceList.filter(ev=>{
         <!-- Scrollable category filter row -->
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin-bottom:7px">
           <div style="display:flex;gap:6px;flex-nowrap;min-width:max-content;padding-bottom:2px">
-            ${["All",...new Set(sourceList.map(e=>e.type))].map(t=>{
+            ${(()=>{
+              const present=[...new Set(sourceList.map(e=>e.type).filter(Boolean))];
+              const preferred=["Nightlife","Brewery","Music","Food","Outdoor","Kids","Arts","Sports","Market","Festival","Community","Family"];
+              const ordered=["All",...preferred.filter(t=>present.includes(t)||t==="Nightlife"),...present.filter(t=>!preferred.includes(t))];
+              return ordered.map(t=>{
               const active=state.typeFilter===t;
               const meta=m2(t);
               const icon=t!=="All"?meta.icon+" ":"⚡ ";
-              return`<div class="type-filter" data-type="${t}" style="padding:6px 14px;border-radius:999px;background:${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.06)"};color:${active?"#fff":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:${active?700:500};cursor:pointer;border:1.5px solid ${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0;transition:all 0.15s">${icon}${t}</div>`;
-            }).join("")}
+              const label=t==="Nightlife"?"Bars & nightlife":t;
+              return`<div class="type-filter" data-type="${t}" style="padding:6px 14px;border-radius:999px;background:${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.06)"};color:${active?"#fff":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:${active?700:500};cursor:pointer;border:1.5px solid ${active?(t==="All"?"#6366f1":meta.color):"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0;transition:all 0.15s">${icon}${label}</div>`;
+            }).join("");
+            })()}
             ${!isPlaces?`<div class="toggle-free" style="padding:6px 14px;border-radius:999px;background:${state.freeOnly?"rgba(16,185,129,0.15)":"rgba(255,255,255,0.06)"};color:${state.freeOnly?"#6ee7b7":"rgba(255,255,255,0.4)"};font-size:12px;font-weight:500;cursor:pointer;border:1.5px solid ${state.freeOnly?"rgba(16,185,129,0.3)":"rgba(255,255,255,0.08)"};white-space:nowrap;flex-shrink:0">💚 Free</div>`:""}
             <div class="clear-all" style="padding:6px 14px;border-radius:999px;background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.75);font-size:12px;cursor:pointer;border:1.5px solid rgba(255,255,255,0.06);white-space:nowrap;flex-shrink:0">✕ Clear</div>
           </div>
@@ -4893,6 +4901,7 @@ function bindEvents(){
         const filtered=isPlaces
           ? state.places.filter(ev=>{
               if(state.typeFilter!=="All"&&ev.type!==state.typeFilter)return false;
+              if(state.whoFilter==="family"&&ev.type==="Nightlife")return false;
               if(state.eventSearch){
                 const q=state.eventSearch;
                 const hay=((ev.name||"")+" "+(ev.location||"")+" "+(ev.address||"")+" "+(ev.description||"")+" "+(ev.type||"")).toLowerCase();

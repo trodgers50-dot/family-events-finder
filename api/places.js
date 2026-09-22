@@ -88,35 +88,39 @@ function classifyPlace(title, types) {
   const titleStr = (title || "").toLowerCase();
   const t = `${titleStr} ${typeStr}`;
 
-  // Prefer SerpAPI type field when it clearly maps to a category
+  // Prefer SerpAPI type / types when present (bar, night_club, etc.)
   const TYPE_MAP = [
+    [["bar", "night club", "nightclub", "night_club", "cocktail bar", "wine bar", "sports bar", "pub", "lounge", "tavern", "dance club", "karaoke"], "Nightlife"],
     [["brewery", "beer garden"], "Brewery"],
+    [["winery", "vineyard"], "Brewery"],
     [["museum", "art gallery", "art museum", "history museum"], "Arts"],
     [["movie theater", "movie theatre", "performing arts theater", "amphitheatre", "amphitheater"], "Arts"],
     [["park", "national park", "state park", "hiking area", "tourist attraction", "zoo", "aquarium", "campground"], "Outdoor"],
     [["bowling alley", "amusement center", "amusement park", "trampoline park", "arcade", "escape room"], "Kids"],
     [["gym", "sports complex", "golf course", "stadium", "athletic field"], "Sports"],
-    [["bar", "night club", "nightclub", "cocktail bar", "pub"], "Nightlife"],
     [["restaurant", "cafe", "coffee shop", "bakery", "pizza restaurant"], "Food"],
-    [["winery", "vineyard"], "Brewery"],
     [["farmers market", "market"], "Market"],
     [["library", "community center", "city hall"], "Community"],
   ];
   for (const [keys, label] of TYPE_MAP) {
-    if (typeList.some(tp => keys.includes(String(tp).toLowerCase()))) return label;
+    if (typeList.some(tp => {
+      const s = String(tp).toLowerCase().replace(/_/g, " ");
+      return keys.some(k => s === k || s.includes(k));
+    })) return label;
   }
 
-  // Distributors / grocery / wholesale are NOT breweries
+  // Distributors / grocery / wholesale are NOT breweries (avoid "beer" grocery misclass)
   if (/beverage corporation|beverage co|distributor|wholesale|grocery|supermarket|liquor store|convenience store|bottling/.test(t)) {
     return "Food";
   }
   if (t.includes("escape") || t.includes("trampoline") || t.includes("arcade") || t.includes("bowling") || t.includes("mini golf") || t.includes("laser tag") || t.includes("go-kart") || t.includes("family entertainment") || t.includes("amusement") || t.includes("kids") || t.includes("children")) return "Kids";
-  // Brewery only if title/type looks like a real brewery, not "beer" alone in a grocery name
-  if (/brewery|brewing|taproom|tap house|winery|vineyard/.test(t)) return "Brewery";
+  // Brewery only if title/type looks like a real brewery, not bare "beer"
+  if (/\bbrewery\b|\bbrewing\b|\btaproom\b|\btap house\b|\bwinery\b|\bvineyard\b/.test(t)) return "Brewery";
   if (t.includes("museum") || t.includes("gallery") || t.includes("theater") || t.includes("theatre") || t.includes("exhibit")) return "Arts";
   if (t.includes("kayak") || t.includes("outdoor") || t.includes("adventure") || t.includes("park") || t.includes("trail") || t.includes("hike") || t.includes("nature") || t.includes("beach") || t.includes("zoo") || t.includes("aquarium")) return "Outdoor";
   if (t.includes("sport") || t.includes("gym") || t.includes("fitness") || t.includes("golf") || t.includes("climb")) return "Sports";
-  if (t.includes("bar") || t.includes("nightclub") || t.includes("lounge") || t.includes("nightlife") || t.includes("comedy")) return "Nightlife";
+  // Pubs, lounges, taverns, bars -> Nightlife
+  if (/\bbar\b|\bpub\b|\blounge\b|\btavern\b|nightclub|night club|nightlife|cocktail|happy hour|comedy club|\bdj\b/.test(t)) return "Nightlife";
   if (t.includes("restaurant") || t.includes("cafe") || t.includes("coffee") || t.includes("food") || t.includes("bakery") || t.includes("pizza") || t.includes("diner")) return "Food";
   if (t.includes("market") || t.includes("farmers")) return "Market";
   if (t.includes("community") || t.includes("library") || t.includes("center")) return "Community";
@@ -252,7 +256,7 @@ export default async function handler(req, res) {
   const coordKey = hasCoords
     ? `_${Math.round(userLat * 10) / 10}_${Math.round(userLng * 10) / 10}`
     : "";
-  const cacheKey = `places_v2_${zip || "coords"}${coordKey}`;
+  const cacheKey = `places_v3_${zip || "coords"}${coordKey}`;
   const cached = await getCached(cacheKey);
   if (cached) {
     let places = Array.isArray(cached) ? cached : [];
@@ -277,6 +281,15 @@ export default async function handler(req, res) {
     `kayak rental OR outdoor adventure near ${near}`,
     `brewery near ${near}`,
     `family entertainment near ${near}`,
+    // Nightlife density — bars, clubs, live music for Tonight / date night
+    `bars near ${near}`,
+    `cocktail bars near ${near}`,
+    `live music bars near ${near}`,
+    `nightclubs near ${near}`,
+    `dance clubs near ${near}`,
+    `sports bars near ${near}`,
+    `wine bars near ${near}`,
+    `happy hour near ${near}`,
   ];
 
   const settled = await Promise.allSettled(
@@ -318,6 +331,9 @@ export default async function handler(req, res) {
       `movie theater near ${near}`,
       `winery near ${near}`,
       `things to do near ${near}`,
+      `bars near ${near}`,
+      `pubs near ${near}`,
+      `live music near ${near}`,
     ];
     const llWide = hasCoords ? `@${userLat},${userLng},11z` : llParam;
     const more = await Promise.allSettled(

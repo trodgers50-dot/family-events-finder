@@ -100,7 +100,7 @@ export default async function handler(req, res) {
   const coordKey = (userLat && userLng) 
     ? `_${Math.round(userLat*10)/10}_${Math.round(userLng*10)/10}` 
     : "";
-  const cacheKey = `events_v15_${zip}${coordKey}`; // v15 = server geocode + small-town expansion
+  const cacheKey = `events_v16_${zip}${coordKey}`; // v16 = nightlife serp google/maps queries
   const cached = await getCached(cacheKey);
   if (cached) {
     // Apply distance filter even on cached results
@@ -656,109 +656,136 @@ async function fetchSerpAPI(cityName, zip, stateName, lat, lng) {
   }));
 }
 
-// SerpAPI engine=google organic results for "events near …" (works when google_events is dead)
+// SerpAPI engine=google organic results (works when google_events is dead)
+// Includes nightlife-oriented queries for Tonight / date night coverage
 async function fetchSerpGoogleOrganic(cityName, zip, stateName, lat, lng) {
   if (!SERP_KEY) return [];
   try {
     const stateFull = STATE_FULL_NAMES[stateName] || stateName || "";
     const where = [cityName, stateName, zip].filter(Boolean).join(" ");
-    const q = `events near ${where}`.trim();
-    const params = new URLSearchParams({
-      engine: "google",
-      q,
-      api_key: SERP_KEY,
-      hl: "en",
-      gl: "us",
-      num: "20",
-    });
-    if (stateFull && cityName && cityName.toLowerCase() !== "your area") {
-      params.set("location", `${cityName}, ${stateFull}, United States`);
-    }
-    const r = await fetch(`https://serpapi.com/search.json?${params}`);
-    const d = await r.json();
-    if (d.error) return [];
-    const organic = d.organic_results || [];
-    const attached = d.events_results || [];
-    const fromAttached = attached.slice(0, 15).map((ev, i) => ({
-      id: "serpgo_" + i + "_" + (zip || "x"),
-      name: ev.title || "Local Event",
-      type: classifyByTitle(ev.title || ""),
-      startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
-      endDate: parseDate(ev.date?.start_date || ""),
-      location: ev.venue?.name || ev.address?.[0] || cityName,
-      address: Array.isArray(ev.address) ? ev.address.join(", ") : (ev.address || cityName),
-      description: ev.description || "",
-      familyRating: 4,
-      cost: ev.ticket_info?.[0]?.price || "See site",
-      url: ev.link || "",
-      source: "Google Search",
-      subEvents: [],
-      lat: ev.gps_coordinates?.latitude || null,
-      lng: ev.gps_coordinates?.longitude || null,
+    const queries = [
+      `events near ${where}`.trim(),
+      `live music tonight near ${where}`.trim(),
+      `comedy night OR karaoke OR DJ near ${where}`.trim(),
+      `concerts at bars near ${where}`.trim(),
+      `nightlife events near ${where}`.trim(),
+    ];
+    const all = [];
+    // Run a couple of the most useful queries in parallel (avoid Serp spam)
+    const picked = [queries[0], queries[1], queries[2]];
+    const settled = await Promise.allSettled(picked.map(async (q, qi) => {
+      const params = new URLSearchParams({
+        engine: "google",
+        q,
+        api_key: SERP_KEY,
+        hl: "en",
+        gl: "us",
+        num: "15",
+      });
+      if (stateFull && cityName && cityName.toLowerCase() !== "your area") {
+        params.set("location", `${cityName}, ${stateFull}, United States`);
+      }
+      const r = await fetch(`https://serpapi.com/search.json?${params}`);
+      const d = await r.json();
+      if (d.error) return [];
+      const organic = d.organic_results || [];
+      const attached = d.events_results || [];
+      const fromAttached = attached.slice(0, 12).map((ev, i) => ({
+        id: "serpgo_" + qi + "_" + i + "_" + (zip || "x"),
+        name: ev.title || "Local Event",
+        type: classifyByTitle(ev.title || ""),
+        startDate: parseDate(ev.date?.start_date || ev.date?.when || ""),
+        endDate: parseDate(ev.date?.start_date || ""),
+        location: ev.venue?.name || ev.address?.[0] || cityName,
+        address: Array.isArray(ev.address) ? ev.address.join(", ") : (ev.address || cityName),
+        description: ev.description || "",
+        familyRating: 4,
+        cost: ev.ticket_info?.[0]?.price || "See site",
+        url: ev.link || "",
+        source: "Google Search",
+        subEvents: [],
+        lat: ev.gps_coordinates?.latitude || null,
+        lng: ev.gps_coordinates?.longitude || null,
+      }));
+      const eventish = organic.filter(o => {
+        const t = `${o.title || ""} ${o.snippet || ""}`.toLowerCase();
+        return /event|festival|concert|show|fair|market|tournament|workshop|meetup|live music|comedy|theater|theatre|karaoke|nightlife|dj |bar crawl|happy hour/.test(t);
+      }).slice(0, 10).map((o, i) => ({
+        id: "serporg_" + qi + "_" + i + "_" + (zip || "x"),
+        name: o.title || "Local Event",
+        type: classifyByTitle(o.title || ""),
+        startDate: parseDate(o.date || ""),
+        endDate: "",
+        location: cityName || "See site",
+        address: o.displayed_link || cityName || "",
+        description: (o.snippet || "").slice(0, 200),
+        familyRating: 4,
+        cost: "See site",
+        url: o.link || "",
+        source: "Google Search",
+        subEvents: [],
+        lat: null,
+        lng: null,
+      }));
+      return [...fromAttached, ...eventish];
     }));
-    const eventish = organic.filter(o => {
-      const t = `${o.title || ""} ${o.snippet || ""}`.toLowerCase();
-      return /event|festival|concert|show|fair|market|tournament|workshop|meetup|live music|comedy|theater|theatre/.test(t);
-    }).slice(0, 12).map((o, i) => ({
-      id: "serporg_" + i + "_" + (zip || "x"),
-      name: o.title || "Local Event",
-      type: classifyByTitle(o.title || ""),
-      startDate: parseDate(o.date || ""),
-      endDate: "",
-      location: cityName || "See site",
-      address: o.displayed_link || cityName || "",
-      description: (o.snippet || "").slice(0, 200),
-      familyRating: 4,
-      cost: "See site",
-      url: o.link || "",
-      source: "Google Search",
-      subEvents: [],
-      lat: null,
-      lng: null,
-    }));
-    return [...fromAttached, ...eventish];
+    settled.forEach(s => { if (s.status === "fulfilled") all.push(...s.value); });
+    return all;
   } catch (e) { return []; }
 }
 
-// SerpAPI google_maps venues near the search area
+// SerpAPI google_maps venues + nightlife spots near the search area
 async function fetchSerpMapsEvents(cityName, zip, stateName, lat, lng) {
   if (!SERP_KEY) return [];
   try {
     const where = [cityName, stateName, zip].filter(Boolean).join(" ");
-    const q = `events venues near ${where}`.trim();
-    const params = new URLSearchParams({
-      engine: "google_maps",
-      type: "search",
-      q,
-      api_key: SERP_KEY,
-      hl: "en",
-    });
-    if (lat && lng) params.set("ll", `@${lat},${lng},12z`);
-    const r = await fetch(`https://serpapi.com/search.json?${params}`);
-    const d = await r.json();
-    if (d.error) return [];
-    const rows = d.local_results || [];
-    const list = Array.isArray(rows) ? rows : [];
-    return list.slice(0, 10).map((p, i) => {
-      const name = p.title || "Local venue";
-      return {
-        id: "serpmap_" + i + "_" + (zip || "x"),
-        name: name + " — events",
-        type: classifyByTitle(name),
-        startDate: "",
-        endDate: "",
-        location: name,
-        address: p.address || cityName || "",
-        description: (Array.isArray(p.types) ? p.types.join(" · ") : (p.type || "Venue")),
-        familyRating: p.rating != null ? Math.round(p.rating) : 4,
-        cost: "See site",
-        url: p.website || p.link || "",
-        source: "Google Maps",
-        subEvents: [],
-        lat: p.gps_coordinates?.latitude ?? null,
-        lng: p.gps_coordinates?.longitude ?? null,
-      };
-    });
+    const queries = [
+      `events venues near ${where}`.trim(),
+      `live music bars near ${where}`.trim(),
+      `comedy clubs near ${where}`.trim(),
+      `karaoke bars near ${where}`.trim(),
+    ];
+    const all = [];
+    const settled = await Promise.allSettled(queries.map(async (q, qi) => {
+      const params = new URLSearchParams({
+        engine: "google_maps",
+        type: "search",
+        q,
+        api_key: SERP_KEY,
+        hl: "en",
+      });
+      if (lat && lng) params.set("ll", `@${lat},${lng},12z`);
+      const r = await fetch(`https://serpapi.com/search.json?${params}`);
+      const d = await r.json();
+      if (d.error) return [];
+      const rows = d.local_results || [];
+      const list = Array.isArray(rows) ? rows : [];
+      return list.slice(0, 8).map((p, i) => {
+        const name = p.title || "Local venue";
+        const types = Array.isArray(p.types) ? p.types : (p.type ? [p.type] : []);
+        const typeHint = types.join(" ") + " " + name;
+        const isNight = /bar|club|lounge|pub|tavern|karaoke|comedy|nightlife|dj/i.test(typeHint);
+        return {
+          id: "serpmap_" + qi + "_" + i + "_" + (zip || "x"),
+          name: name + (qi === 0 ? " — events" : " — nightlife"),
+          type: isNight ? "Nightlife" : classifyByTitle(name),
+          startDate: "",
+          endDate: "",
+          location: name,
+          address: p.address || cityName || "",
+          description: (Array.isArray(p.types) ? p.types.join(" · ") : (p.type || "Venue")),
+          familyRating: p.rating != null ? Math.round(p.rating) : 4,
+          cost: "See site",
+          url: p.website || p.link || "",
+          source: "Google Maps",
+          subEvents: [],
+          lat: p.gps_coordinates?.latitude ?? null,
+          lng: p.gps_coordinates?.longitude ?? null,
+        };
+      });
+    }));
+    settled.forEach(s => { if (s.status === "fulfilled") all.push(...s.value); });
+    return all;
   } catch (e) { return []; }
 }
 
@@ -1476,7 +1503,7 @@ function getCityFromZip(zip) {
 
 function classifyByTitle(title) {
   const t = (title || "").toLowerCase();
-  if (t.includes("comedy")||t.includes("stand-up")||t.includes("karaoke")||t.includes("bar crawl")||t.includes("nightclub")||t.includes("rooftop bar")||t.includes("edm")||t.includes("dj ")) return "Nightlife";
+  if (t.includes("comedy")||t.includes("stand-up")||t.includes("karaoke")||t.includes("bar crawl")||t.includes("nightclub")||t.includes("rooftop bar")||t.includes("edm")||t.includes("dj ")||t.includes("happy hour")||t.includes("open mic")||t.includes("dance club")||t.includes("live dj")) return "Nightlife";
   if (t.includes("brewery")||t.includes("brewing")||t.includes("beer")||t.includes("whiskey")||t.includes("wine tasting")||t.includes("cocktail")) return "Brewery";
   if (t.includes("farmer")||t.includes("farmers market")||t.includes("market")) return "Market";
   if (t.includes("food truck")||t.includes("taste")||t.includes("culinary")||t.includes("restaurant")) return "Food";
