@@ -101,6 +101,7 @@ select option{color:#000}
       <img id="previewImg" class="preview" alt="">
       <div class="status" id="statusLine"><div class="spin"></div><span id="statusText">Reading flyer…</span></div>
       <div class="err" id="captureErr"></div>
+      <button class="ghost hidden" id="manualBtn">✍️ Fill in the details myself</button>
     </div>
   </section>
 
@@ -254,6 +255,7 @@ async function onFile(e){
   const file=e.target.files&&e.target.files[0]; e.target.value="";
   if(!file) return;
   $("captureErr").textContent="";
+  $("manualBtn").classList.add("hidden");
   $("working").classList.remove("hidden");
   $("statusLine").classList.remove("hidden");
   $("statusText").textContent="Getting photo ready…";
@@ -268,10 +270,12 @@ async function onFile(e){
     window.scrollTo(0,0);
   }catch(err){
     $("statusLine").classList.add("hidden");
-    $("captureErr").textContent="Couldn't read it: "+err.message+" — try a clearer, straight-on photo.";
+    $("captureErr").textContent="Couldn't read it automatically ("+err.message.slice(0,140)+"). Try a clearer, straight-on photo, or fill it in yourself.";
+    if(imageData) $("manualBtn").classList.remove("hidden");
   }
 }
 $("camInput").onchange=onFile; $("libInput").onchange=onFile;
+$("manualBtn").onclick=()=>{ fillForm({category:"event"},[]); $("working").classList.add("hidden"); show("review"); window.scrollTo(0,0); };
 
 function setCat(c){category=c;document.querySelectorAll("#catSeg button").forEach(b=>{b.classList.toggle("on",b.dataset.cat===c);b.classList.toggle("place",b.dataset.cat==="place");});}
 document.querySelectorAll("#catSeg button").forEach(b=>b.onclick=()=>setCat(b.dataset.cat));
