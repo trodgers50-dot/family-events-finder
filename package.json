@@ -4,5 +4,8 @@
     "api/events.js": {
       "maxDuration": 30
     }
+  },
+  "dependencies": {
+    "postgres": "^3.4.5"
   }
 }

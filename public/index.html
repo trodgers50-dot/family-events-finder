@@ -10,7 +10,7 @@
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
 <title>Buzz — Stop scrolling. Start doing.</title>
-<meta name="bf-build" content="lanes-v1">
+<meta name="bf-build" content="flyer-v1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -3567,6 +3567,7 @@ function isPlanTicketedEvent(ev){
   const showSignal=/concert|ticket|showtimes?|\bshow\b|festival|tourtime|doors|presale|box office|comedy show|stand-?up|symphony|theater|theatre|opera|ballet|tour|game|match/.test(blob);
   if((ev.type==="Nightlife"||ev.type==="Brewery") && !showSignal) return false;
   if(venueOnly && !showSignal) return false;
+  if(ev.isFlyer||ev.source==="Local flyer") return !!(ev.startDate||ev.date);
   const trusted=/ticketmaster|eventbrite|predicthq/.test(blob);
   const hasDate=!!(ev.startDate||ev.date);
   if(trusted) return true;
@@ -4097,7 +4098,7 @@ if(data.events&&data.events.length>0){
       const MAX_DIST = 50; // miles
       const haveSearchCoords = !!(state.userLat && state.userLng);
       const stateAbbr=(state.info?.state||"").toUpperCase();
-      const ALWAYS_KEEP=["Submitted","Local","USDA"]; // user-added / local sources
+      const ALWAYS_KEEP=["Submitted","Local","USDA","Local flyer"]; // user-added / local sources
       const filteredLive = liveEvents.filter(ev=>{
         // Trusted local/user sources always show
         if(ALWAYS_KEEP.includes(ev.source)) return true;
@@ -5230,6 +5231,7 @@ const filtered=sourceList.filter(ev=>{
     const metaChips=`
             ${isPlan&&ev.reason?`<span class="meta-chip reason">${san(ev.reason)}</span>`:""}
             ${openChip}
+            ${ev.source==="Local flyer"?`<span class="meta-chip" style="background:rgba(245,158,11,0.16);color:#fcd34d;border:1px solid rgba(245,158,11,0.28)">📌 Local flyer</span>`:""}
             <span class="meta-chip type" style="color:${meta.color}">${san(ev.type|| (isPlace?"Place":"Event"))}</span>
             ${isPlan?`<span class="meta-chip" style="background:${isPlace?"rgba(236,72,153,0.12)":"rgba(99,102,241,0.14)"};color:${isPlace?"#f9a8d4":"#c7d2fe"}">${isPlace?"Place":"Event"}</span>`:""}
             ${!isPlan?(isPlace
@@ -5309,7 +5311,7 @@ const filtered=sourceList.filter(ev=>{
               <div style="font-size:13px;color:rgba(255,255,255,0.75);margin-bottom:8px">${san(ev.location||"Venue TBD")}</div>
               <a href="https://www.google.com/search?q=${encodeURIComponent((ev.location||ev.name)+" "+((state.info?.city||"")+" "+(state.info?.state||""))+" location address")}" target="_blank" style="font-size:11px;color:rgba(99,162,255,0.6);text-decoration:none;background:rgba(99,162,255,0.08);padding:4px 10px;border-radius:6px">🔍 Find this venue on Google</a>
             </div>`}
-        ${ev.source&&ev.source!=="Local"?`<div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:10px">Data provided by ${ev.source}</div>`:""}
+        ${ev.source&&ev.source!=="Local"&&ev.source!=="Local flyer"?`<div style="font-size:10px;color:rgba(255,255,255,0.75);margin-bottom:10px">Data provided by ${ev.source}</div>`:""}
         
         ${!isPlace?`<!-- Going button -->
         <div class="going-btn" data-id="${ev.id}" data-name="${san(ev.name)}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:14px;background:${isGoing?"rgba(16,185,129,0.16)":"linear-gradient(135deg,rgba(99,102,241,0.28),rgba(139,92,246,0.22))"};border:1px solid ${isGoing?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.35)"};cursor:pointer;margin-bottom:14px;transition:all 0.2s;min-height:48px;box-shadow:${isGoing?"none":"0 4px 16px rgba(99,102,241,0.18)"}">
@@ -5490,7 +5492,7 @@ const filtered=sourceList.filter(ev=>{
         <div style="text-align:center;margin-top:8px;font-size:10px;color:rgba(255,255,255,0.75);display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
           <a href="https://buzzfinder.app/privacy.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Privacy Policy</a>
           <a href="https://buzzfinder.app/terms.html" target="_blank" style="color:rgba(255,255,255,0.75);text-decoration:none">Terms of Use</a>
-          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build lanes-v1</span>
+          <span style="color:rgba(255,255,255,0.75)">© 2026 Buzz · buzzfinder.app · build flyer-v1</span>
         </div>
       </div>
     </div>`}

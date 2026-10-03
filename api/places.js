@@ -1,6 +1,11 @@
 // api/places.js — Buzz "Things to do" places proxy (SerpAPI Google Maps)
 // Mirrors api/events.js style: parallel queries, short timeouts, Supabase cache
 
+// Loaded lazily so a flyer-store problem can never take down this endpoint.
+async function nearbyFlyers(opts) {
+  try { const m = await import("./_lib/flyers.js"); return await m.nearbyFlyers(opts); }
+  catch (e) { console.log("Flyer module unavailable:", e.message); return []; }
+}
 const SERP_KEY     = process.env.SERP_KEY  || "";
 const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_U5KBIkFT7l0jSSD8QaYJPQ_dEZWQJ63";
@@ -252,6 +257,17 @@ export default async function handler(req, res) {
     }
   }
 
+  // Local flyer "places" (admin-published) — read live, never cached.
+  const flyerPromise = hasCoords
+    ? nearbyFlyers({ lat: userLat, lng: userLng, miles: 45, category: "place" })
+    : Promise.resolve([]);
+  async function mergeFlyers(list) {
+    const flyers = await flyerPromise;
+    if (!flyers.length) return list;
+    const ids = new Set(flyers.map(f => f.id));
+    return [...flyers, ...(list || []).filter(p => !ids.has(p.id))];
+  }
+
   const passedCity = (city || "").trim();
   const prefix2 = hasZip ? String(zip).slice(0, 2) : "";
   const stateAbbr = ((state || "").trim().toUpperCase()) || ZIP_STATE_PREFIX[prefix2] || "";
@@ -277,6 +293,7 @@ export default async function handler(req, res) {
         return calcDistance(userLat, userLng, parseFloat(p.lat), parseFloat(p.lng)) <= 120;
       });
     }
+    places = await mergeFlyers(places);
     return res.status(200).json({ places, errors: [], fromCache: true });
   }
 
@@ -389,5 +406,6 @@ export default async function handler(req, res) {
   if (results.places.length > 0) {
     await setCached(cacheKey, results.places);
   }
+  if (Array.isArray(results.places)) results.places = await mergeFlyers(results.places);
   return res.status(200).json(results);
 }

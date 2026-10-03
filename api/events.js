@@ -8,6 +8,11 @@ const PHQ_KEY      = process.env.PHQ_KEY   || "";
 const EB_KEY       = process.env.EB_KEY    || "";
 const NINJA_KEY    = process.env.NINJA_KEY || "";
 const USDA_KEY     = process.env.USDA_KEY  || "";
+// Loaded lazily so a flyer-store problem can never take down this endpoint.
+async function nearbyFlyers(opts) {
+  try { const m = await import("./_lib/flyers.js"); return await m.nearbyFlyers(opts); }
+  catch (e) { console.log("Flyer module unavailable:", e.message); return []; }
+}
 const SUPABASE_URL = "https://cdhyervrwmsmquovwrwj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_U5KBIkFT7l0jSSD8QaYJPQ_dEZWQJ63";
 
@@ -81,6 +86,17 @@ export default async function handler(req, res) {
     }
   }
 
+  // Local flyer events (admin-published) are read live on every request — never cached.
+  const flyerPromise = hasCoords
+    ? nearbyFlyers({ lat: userLat, lng: userLng, miles: 50, category: "event" })
+    : Promise.resolve([]);
+  async function mergeFlyers(list, miles) {
+    const flyers = (await flyerPromise).filter(f => f.distanceMiles == null || f.distanceMiles <= miles);
+    if (!flyers.length) return list;
+    const ids = new Set(flyers.map(f => f.id));
+    return [...flyers, ...(list || []).filter(e => !ids.has(e.id))];
+  }
+
   const VB_ZIPS = ["23451","23452","23453","23454","23455","23456","23457","23458","23459","23460","23461","23462","23463","23464","23465","23466","23467","23479"];
   const isVB = VB_ZIPS.includes(zip||"");
   const passedCity = (city||"").trim();
@@ -112,6 +128,7 @@ export default async function handler(req, res) {
         return dist <= 100;
       });
     }
+    cachedEvents = await mergeFlyers(cachedEvents, 45);
     return res.status(200).json({ events: cachedEvents, errors: [], fromCache: true });
   }
   const results = { events: [], errors: [] };
@@ -341,6 +358,7 @@ export default async function handler(req, res) {
     setCached(cacheKey, results.events).catch(()=>{});
   }
 
+  results.events = await mergeFlyers(results.events, maxMiles);
   return res.status(200).json(results);
 }
 
